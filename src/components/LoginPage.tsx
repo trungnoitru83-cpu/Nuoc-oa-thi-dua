@@ -28,6 +28,7 @@ import {
   getDefaultRoleForTeacher
 } from '../data/form03Criteria';
 import { getTeacherEmulationCode, ADMIN_TEACHER } from '../data/mockTeachers';
+import { formatTeacherId } from '../utils/formatTeacherId';
 import { notifyCredentialChange, ADMIN_EMAIL, PRINCIPAL_ADMIN_EMAIL, ADMIN_EMAILS, isAdminEmail, getCredentialLogs } from '../lib/credentialNotifier';
 
 interface LoginPageProps {
@@ -87,30 +88,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [changePassError, setChangePassError] = useState('');
   const [changePassSuccess, setChangePassSuccess] = useState('');
 
-  // Helper: Find teacher by Mã thi đua (TĐ0001 - TĐ0036), Email or Name
+  // Helper: Find teacher by Mã thi đua (TĐ01 - TĐ36), Email, ID or Name
   const findTeacher = (input: string): { teacher: Teacher; index: number } | null => {
     const raw = input.trim();
     if (!raw) return null;
     const clean = raw.toLowerCase();
-    const cleanNoAccent = clean.replace(/đ/g, 'd');
+    const formattedInput = formatTeacherId(raw);
 
     // Check if searching for admin email directly
-    if (clean === ADMIN_EMAIL.toLowerCase() || clean === PRINCIPAL_ADMIN_EMAIL.toLowerCase() || clean === 'td0000' || clean === 'admin') {
+    if (clean === ADMIN_EMAIL.toLowerCase() || clean === PRINCIPAL_ADMIN_EMAIL.toLowerCase() || clean === 'td00' || clean === 'td0000' || clean === 'admin') {
       return { teacher: ADMIN_TEACHER, index: 0 };
     }
 
     for (let i = 0; i < teachers.length; i++) {
       const t = teachers[i];
-      const code = (t.emulationCode || getTeacherEmulationCode(t, i)).toLowerCase();
-      const codeNoAccent = code.replace(/đ/g, 'd');
-      const teacherNum = parseInt(t.id.replace(/\D/g, ''), 10) || (i + 1);
-      const rawNum = parseInt(clean.replace(/\D/g, ''), 10);
+      const tFormattedCode = formatTeacherId(t.emulationCode || t.id || getTeacherEmulationCode(t, i));
 
       if (
-        code === clean ||
-        codeNoAccent === cleanNoAccent ||
-        (cleanNoAccent.startsWith('td') && cleanNoAccent === codeNoAccent) ||
-        (!isNaN(rawNum) && rawNum === teacherNum && clean.length <= 6) ||
+        tFormattedCode === formattedInput ||
         t.email.toLowerCase() === clean ||
         t.fullName.toLowerCase() === clean ||
         t.id.toLowerCase() === clean

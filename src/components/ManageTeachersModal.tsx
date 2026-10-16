@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, UserPlus, Trash2, Edit2, Check, Save, Shield, MailCheck, History } from 'lucide-react';
 import { Teacher } from '../types';
 import { SCHOOL_NAME, getTeacherEmulationCode } from '../data/mockTeachers';
+import { formatTeacherId } from '../utils/formatTeacherId';
 import { notifyCredentialChange, getCredentialLogs, ADMIN_EMAIL } from '../lib/credentialNotifier';
 
 interface ManageTeachersModalProps {
@@ -44,8 +45,8 @@ export const ManageTeachersModal: React.FC<ManageTeachersModalProps> = ({
     e.preventDefault();
     if (!fullName.trim()) return;
 
-    const nextNumber = teachers.length + 1;
-    const autoCode = emulationCode.trim() || (isAddAdminMode ? `TĐ_ADMIN${Date.now().toString().slice(-3)}` : `TĐ${String(nextNumber).padStart(4, '0')}`);
+    const nextNumber = teachers.filter(t => t.id !== 'admin_trung83').length + 1;
+    const autoCode = emulationCode.trim() ? formatTeacherId(emulationCode) : (isAddAdminMode ? 'TĐ00' : formatTeacherId(nextNumber));
     const userEmail = email.trim() || `${fullName.toLowerCase().replace(/\s+/g, '.')}@nuocoa.edu.vn`;
 
     const newTeacher: Teacher = {
@@ -126,7 +127,7 @@ export const ManageTeachersModal: React.FC<ManageTeachersModalProps> = ({
   };
 
   const handleSaveEdit = (t: Teacher) => {
-    const updatedCode = emulationCode.trim() || t.emulationCode || getTeacherEmulationCode(t);
+    const updatedCode = formatTeacherId(emulationCode.trim() || t.emulationCode || getTeacherEmulationCode(t));
     const updatedEmail = email.trim() || t.email;
 
     const updated: Teacher = {

@@ -5,8 +5,10 @@ import { FORM_03_CRITERIA, CLASSIFICATION_RULES, getClassification, getClassific
 import { getTeacherEmulationCode } from '../data/mockTeachers';
 import { SignatureModal } from './SignatureModal';
 import { exportToWord, exportForm03ToWord } from '../lib/wordExport';
+import { validateAndBuildDiemPayload } from '../lib/googleSheetService';
 
 interface Form03PageProps {
+  currentUser?: Teacher | null;
   teachers: Teacher[];
   currentTeacher: Teacher;
   onSelectTeacher: (teacher: Teacher) => void;
@@ -91,6 +93,7 @@ export const calculateDeductionTotal = (
 };
 
 export const Form03Page: React.FC<Form03PageProps> = ({
+  currentUser,
   teachers,
   currentTeacher,
   onSelectTeacher,
@@ -275,12 +278,19 @@ export const Form03Page: React.FC<Form03PageProps> = ({
       updatedAt: new Date().toISOString()
     };
 
+    // Validation check before saving using currentTeacher & currentUser
+    const val = validateAndBuildDiemPayload(currentTeacher, updatedEval, selectedMonth, selectedYear, currentUser);
+    if (!val.isValid) {
+      alert(val.errorMessage || 'Lỗi: Không tìm thấy thông tin hợp lệ của người dùng!');
+      return;
+    }
+
     onSaveEvaluation(updatedEval);
     if (newStatus) setStatus(newStatus);
 
     const defaultMsg = finalStatus === 'approved' 
-      ? `✅ Đã cập nhật điểm Hiệu trưởng đánh giá (${grandTotal_Principal} điểm) và phê duyệt lưu vào File tổng hợp 36 Giáo viên!`
-      : `✅ Đã cập nhật điểm Giáo viên tự chấm (${grandTotal_Teacher} điểm) và lưu vào File tổng hợp 36 Giáo viên!`;
+      ? `✅ Đã cập nhật điểm Hiệu trưởng đánh giá (${grandTotal_Principal} điểm) và lưu trực tiếp lên Google Sheet [${val.payload?.maChamDiem}]!`
+      : `✅ Đã cập nhật điểm Giáo viên tự chấm (${grandTotal_Teacher} điểm) và lưu trực tiếp lên Google Sheet [${val.payload?.maChamDiem}]!`;
 
     setSaveToastMsg(customMsg || defaultMsg);
     setSaveToast(true);

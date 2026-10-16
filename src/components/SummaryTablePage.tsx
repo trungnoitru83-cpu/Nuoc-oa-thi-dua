@@ -301,11 +301,11 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
           <button
             onClick={handleManualSyncGoogleSheet}
             disabled={isSyncingGoogleSheet}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs rounded-2xl shadow-md transition disabled:opacity-60 cursor-pointer"
-            title="Nhấn để kiểm tra và đồng bộ lại toàn bộ dữ liệu tháng sang Google Sheet"
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs rounded-2xl shadow-md transition disabled:opacity-60 cursor-pointer"
+            title="Quét tất cả bản ghi đã lưu trên Firestore và đẩy bổ sung đầy đủ sang Google Sheet"
           >
             <RefreshCw className={`w-4 h-4 ${isSyncingGoogleSheet ? 'animate-spin' : ''}`} />
-            <span>{isSyncingGoogleSheet ? 'Đang lưu Google Sheet...' : 'Lưu lại Google Sheet'}</span>
+            <span>{isSyncingGoogleSheet ? 'Đang đồng bộ dữ liệu...' : 'Đồng bộ toàn bộ dữ liệu lên Google Sheet'}</span>
           </button>
 
           <button

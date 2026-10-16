@@ -119,12 +119,46 @@ export default function App() {
 
   // Firebase Firestore Setup and Listeners
   useEffect(() => {
-    // 1. Seed initial data to Firestore if database is empty
+    // Reconcile INITIAL_TEACHERS with local state
+    setTeachers(prev => {
+      const map = new Map<string, Teacher>(prev.map(t => [t.emulationCode || t.id, t]));
+      let changed = false;
+      const list: Teacher[] = [];
+
+      INITIAL_TEACHERS.forEach(initT => {
+        const key = initT.emulationCode || initT.id;
+        if (!map.has(key)) {
+          list.push(initT);
+          changed = true;
+        } else {
+          const current = map.get(key)!;
+          // Update official name if changed in INITIAL_TEACHERS
+          if (current.fullName !== initT.fullName && !current.fullName.includes('Mới')) {
+            list.push({ ...current, fullName: initT.fullName });
+            changed = true;
+          } else {
+            list.push(current);
+          }
+          map.delete(key);
+        }
+      });
+
+      // Keep custom user-created teachers
+      map.forEach(customT => list.push(customT));
+
+      if (changed || list.length !== prev.length) {
+        localStorage.setItem('nuocoa_teachers', JSON.stringify(list));
+        return list;
+      }
+      return prev;
+    });
+
+    // 1. Seed initial data to Firestore
     syncInitialDataToFirestore(INITIAL_TEACHERS, form01Data, evaluations);
 
     // 2. Real-time subscriber for Teachers
     const unsubTeachers = listenToTeachers((remoteTeachers) => {
-      if (remoteTeachers.length > 0) {
+      if (remoteTeachers.length >= INITIAL_TEACHERS.length) {
         setTeachers(remoteTeachers);
       }
     });
@@ -254,33 +288,20 @@ export default function App() {
     );
 
     // 2. Đồng thời lưu vào Google Sheet
-    const teacher =
-      teachers.find(
-        t => t.id === evalData.teacherId
+    const targetTeacher = teachers.find(t => t.id === evalData.teacherId) || selectedTeacher || currentUser;
+    if (targetTeacher || currentUser) {
+      const result = await saveEvaluationToGoogleSheet(
+        targetTeacher || currentUser!,
+        evalData,
+        selectedMonth,
+        selectedYear,
+        currentUser
       );
 
-    if (teacher) {
-
-      const result =
-        await saveEvaluationToGoogleSheet(
-          teacher,
-          evalData,
-          selectedMonth,
-          selectedYear
-        );
-
       if (!result.success) {
-
-        console.error(
-          'Không lưu được Google Sheet:',
-          result.message
-        );
-
+        console.error('Không lưu được Google Sheet:', result.message);
       } else {
-
-        console.log(
-          'Đã lưu Google Sheet thành công'
-        );
+        console.log('Đã lưu Google Sheet thành công cho teacherId:', result.maChamDiem);
       }
     }
   };
@@ -385,6 +406,7 @@ export default function App() {
 
         {currentUser && activeTab === 'evaluation' && (
           <Form03Page
+            currentUser={currentUser}
             teachers={teachers}
             currentTeacher={selectedTeacher}
             onSelectTeacher={(t) => setSelectedTeacher(t)}

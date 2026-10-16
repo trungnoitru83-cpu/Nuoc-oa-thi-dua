@@ -8,6 +8,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { Teacher, Form01Data, Form03Evaluation, EntryStatusData } from '../types';
+import { formatTeacherId } from '../utils/formatTeacherId';
 
 // Collection references
 const TEACHERS_COL = 'teachers';
@@ -52,8 +53,15 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   return errInfo;
 }
 
+// Helper to clean undefined values before sending to Firestore
+function sanitizeForFirestore<T>(data: T): any {
+  return JSON.parse(JSON.stringify(data, (_, value) => {
+    return value === undefined ? null : value;
+  }));
+}
+
 /**
- * Seed initial 36 teachers, Mẫu 01, Mẫu 03 into Firestore if collection is empty
+ * Seed initial teachers, Mẫu 01, Mẫu 03 into Firestore if collection is empty
  */
 export async function syncInitialDataToFirestore(
   initialTeachers: Teacher[],
@@ -62,10 +70,14 @@ export async function syncInitialDataToFirestore(
 ) {
   try {
     const teachersSnap = await getDocs(collection(db, TEACHERS_COL));
-    if (teachersSnap.empty) {
-      console.log('Seeding initial 36 teachers to Firestore...');
-      for (const teacher of initialTeachers) {
-        await setDoc(doc(db, TEACHERS_COL, teacher.id), sanitizeForFirestore(teacher));
+    const existingIds = new Set(teachersSnap.docs.map(d => d.id));
+    for (const teacher of initialTeachers) {
+      if (!existingIds.has(teacher.id)) {
+        const cleanTeacher = {
+          ...teacher,
+          emulationCode: formatTeacherId(teacher.emulationCode || teacher.id)
+        };
+        await setDoc(doc(db, TEACHERS_COL, teacher.id), sanitizeForFirestore(cleanTeacher), { merge: true });
       }
     }
 
@@ -100,7 +112,11 @@ export function listenToTeachers(onData: (teachers: Teacher[]) => void) {
       if (!snapshot.empty) {
         const list: Teacher[] = [];
         snapshot.forEach((docSnap) => {
-          list.push(docSnap.data() as Teacher);
+          const raw = docSnap.data() as Teacher;
+          list.push({
+            ...raw,
+            emulationCode: formatTeacherId(raw.emulationCode || raw.id)
+          });
         });
         onData(list);
       }
@@ -159,19 +175,16 @@ export function listenToEvaluations(onData: (evalMap: Record<string, Form03Evalu
   );
 }
 
-// Helper to clean undefined values before sending to Firestore
-function sanitizeForFirestore<T>(data: T): any {
-  return JSON.parse(JSON.stringify(data, (_, value) => {
-    return value === undefined ? null : value;
-  }));
-}
-
 /**
  * Save single Teacher
  */
 export async function saveTeacherToFirestore(teacher: Teacher) {
   try {
-    const cleanData = sanitizeForFirestore(teacher);
+    const cleanTeacher = {
+      ...teacher,
+      emulationCode: formatTeacherId(teacher.emulationCode || teacher.id)
+    };
+    const cleanData = sanitizeForFirestore(cleanTeacher);
     await setDoc(doc(db, TEACHERS_COL, teacher.id), cleanData, { merge: true });
     return { success: true };
   } catch (error) {
@@ -245,4 +258,3 @@ export async function saveEntryStatusToFirestore(docKey: string, data: EntryStat
     return { success: false, error };
   }
 }
-
