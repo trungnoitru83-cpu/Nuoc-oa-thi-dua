@@ -80,62 +80,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           </div>
 
-          {/* Navigation Tabs - Hidden if not logged in */}
-          {currentUser && (
-            <nav className="hidden md:flex items-center gap-1 bg-slate-200/80 dark:bg-slate-800 p-1.5 rounded-xl border-2 border-slate-300 dark:border-slate-700">
-              <button
-                onClick={() => setActiveTab('login')}
-                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-black rounded-lg transition-all ${
-                  activeTab === 'login'
-                    ? 'bg-white dark:bg-slate-900 shadow-md ring-2 ring-slate-400 dark:ring-slate-600 font-black'
-                    : 'text-slate-800 dark:text-slate-100 hover:text-slate-950 hover:bg-slate-300/60 dark:hover:bg-slate-700'
-                }`}
-                style={activeTab === 'login' ? { color: themeOpt.dotColor } : undefined}
-              >
-                <LogIn className="w-4 h-4 shrink-0" />
-                <span>Trang 1: Tài Khoản</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('profile')}
-                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-black rounded-lg transition-all ${
-                  activeTab === 'profile'
-                    ? 'bg-white dark:bg-slate-900 shadow-md ring-2 ring-slate-400 dark:ring-slate-600 font-black'
-                    : 'text-slate-800 dark:text-slate-100 hover:text-slate-950 hover:bg-slate-300/60 dark:hover:bg-slate-700'
-                }`}
-                style={activeTab === 'profile' ? { color: themeOpt.dotColor } : undefined}
-              >
-                <UserCheck className="w-4 h-4 shrink-0" />
-                <span>Trang 2: Mẫu 01</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('evaluation')}
-                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-black rounded-lg transition-all shadow-xs"
-                style={
-                  activeTab === 'evaluation'
-                    ? { backgroundColor: isLeader ? '#b45309' : themeOpt.dotColor, color: '#ffffff' }
-                    : { color: isLeader ? '#b45309' : themeOpt.dotColor, backgroundColor: 'transparent' }
-                }
-              >
-                <FileSpreadsheet className="w-4 h-4 shrink-0" />
-                <span>{formTabLabel}</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('summary')}
-                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-black rounded-lg transition-all ${
-                  activeTab === 'summary'
-                    ? 'bg-white dark:bg-slate-900 shadow-md ring-2 ring-slate-400 dark:ring-slate-600 font-black'
-                    : 'text-slate-800 dark:text-slate-100 hover:text-slate-950 hover:bg-slate-300/60 dark:hover:bg-slate-700'
-                }`}
-                style={activeTab === 'summary' ? { color: themeOpt.dotColor } : undefined}
-              >
-                <BarChart3 className="w-4 h-4 shrink-0" />
-                <span>Tổng Hợp ({teacherCount} GV)</span>
-              </button>
-            </nav>
-          )}
+          {/* Navigation Tabs - Hidden per request */}
 
           {/* Right Controls: Month & Year Selectors + Theme Toggle + User Profile */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -246,55 +191,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         </div>
 
-        {/* Mobile Navigation Row - Only if logged in */}
-        {currentUser && (
-          <div className="flex md:hidden overflow-x-auto pb-2 gap-1.5 scrollbar-none border-t border-slate-200 dark:border-slate-800 pt-2">
-            <button
-              onClick={() => setActiveTab('login')}
-              className={`px-3 py-1.5 text-xs font-black whitespace-nowrap rounded-lg border-2 ${
-                activeTab === 'login'
-                  ? 'text-white shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-300 dark:border-slate-700'
-              }`}
-              style={activeTab === 'login' ? { backgroundColor: themeOpt.dotColor, borderColor: themeOpt.dotColor, color: '#ffffff' } : undefined}
-            >
-              Trang 1: Tài Khoản
-            </button>
-            <button
-              onClick={() => setActiveTab('profile')}
-              className={`px-3 py-1.5 text-xs font-black whitespace-nowrap rounded-lg border-2 ${
-                activeTab === 'profile'
-                  ? 'text-white shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-300 dark:border-slate-700'
-              }`}
-              style={activeTab === 'profile' ? { backgroundColor: themeOpt.dotColor, borderColor: themeOpt.dotColor, color: '#ffffff' } : undefined}
-            >
-              Trang 2: Mẫu 01
-            </button>
-            <button
-              onClick={() => setActiveTab('evaluation')}
-              className={`px-3 py-1.5 text-xs font-black whitespace-nowrap rounded-lg border-2 ${
-                activeTab === 'evaluation'
-                  ? 'text-white shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-300 dark:border-slate-700'
-              }`}
-              style={activeTab === 'evaluation' ? { backgroundColor: isLeader ? '#b45309' : themeOpt.dotColor, borderColor: isLeader ? '#b45309' : themeOpt.dotColor, color: '#ffffff' } : undefined}
-            >
-              {isLeader ? 'Trang 3: Mẫu 02' : 'Trang 3: Mẫu 03'}
-            </button>
-            <button
-              onClick={() => setActiveTab('summary')}
-              className={`px-3 py-1.5 text-xs font-black whitespace-nowrap rounded-lg border-2 ${
-                activeTab === 'summary'
-                  ? 'text-white shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-300 dark:border-slate-700'
-              }`}
-              style={activeTab === 'summary' ? { backgroundColor: themeOpt.dotColor, borderColor: themeOpt.dotColor, color: '#ffffff' } : undefined}
-            >
-              Tổng hợp xếp loại
-            </button>
-          </div>
-        )}
+        {/* Mobile Navigation Row - Removed per request */}
 
       </div>
     </header>

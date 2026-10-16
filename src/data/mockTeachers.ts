@@ -11,7 +11,21 @@ export function getTeacherEmulationCode(teacher?: Teacher | null, index?: number
   return `TĐ${String(n).padStart(4, '0')}`;
 }
 
+export const ADMIN_TEACHER: Teacher = {
+  id: 'admin_trung83',
+  emulationCode: 'TĐ0000',
+  fullName: 'Quản Trị Viên (Trung)',
+  email: 'trungnoitru83@gmail.com',
+  phone: '0905123483',
+  dob: '15/08/1983',
+  position: 'Quản trị viên Hệ thống',
+  subject: 'Quản trị hệ thống',
+  department: 'Ban Quản trị',
+  school: SCHOOL_NAME
+};
+
 export const INITIAL_TEACHERS: Teacher[] = [
+  ADMIN_TEACHER,
   { id: 'gv01', emulationCode: 'TĐ0001', fullName: 'Nguyễn Xuân Ảnh', email: 'anh.nguyen@nuocoa.edu.vn', phone: '0905123401', dob: '15/04/1975', position: 'Hiệu trưởng', subject: 'Quản lý chung', department: 'Ban Giám Hiệu', school: SCHOOL_NAME },
   { id: 'gv02', emulationCode: 'TĐ0002', fullName: 'Hồ Thị Hiến', email: 'hien.ho@nuocoa.edu.vn', phone: '0905123402', dob: '22/08/1978', position: 'Phó Hiệu trưởng', subject: 'Quản lý chuyên môn', department: 'Ban Giám Hiệu', school: SCHOOL_NAME },
   { id: 'gv03', emulationCode: 'TĐ0003', fullName: 'Đinh Hữu Phước', email: 'phuoc.dinh@nuocoa.edu.vn', phone: '0905123403', dob: '10/11/1980', position: 'Phó Hiệu trưởng', subject: 'Quản lý CSVC-Nội trú', department: 'Ban Giám Hiệu', school: SCHOOL_NAME },

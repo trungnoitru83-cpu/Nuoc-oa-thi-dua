@@ -1,7 +1,7 @@
 import { Form03Evaluation, Teacher } from '../types';
 
 const DEFAULT_GOOGLE_SHEET_API_URL =
-  'https://script.google.com/macros/s/AKfycbywWV9Hdi0RyUhZSO_FOiGALBRPBr388611e2C_AoR4uCzqVMOPhhnl6Rue_smTlTYP/exec';
+  'https://script.google.com/macros/s/AKfycbxJ6W8LVbLONmyqMK1xIXIKTF3ewcLHvmuTvLMxn6qYItk8SWHarDZxVn454euN0G3W/exec';
 
 const GOOGLE_SHEET_API_URL =
   import.meta.env.VITE_GOOGLE_SHEET_API_URL || DEFAULT_GOOGLE_SHEET_API_URL;

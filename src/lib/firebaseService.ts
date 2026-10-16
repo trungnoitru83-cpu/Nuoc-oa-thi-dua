@@ -7,12 +7,13 @@ import {
   query
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
-import { Teacher, Form01Data, Form03Evaluation } from '../types';
+import { Teacher, Form01Data, Form03Evaluation, EntryStatusData } from '../types';
 
 // Collection references
 const TEACHERS_COL = 'teachers';
 const FORM01_COL = 'form01';
 const EVALUATIONS_COL = 'evaluations';
+const ENTRY_STATUS_COL = 'entry_status';
 
 export enum OperationType {
   CREATE = 'create',
@@ -206,3 +207,42 @@ export async function saveEvaluationToFirestore(docKey: string, data: Form03Eval
     return { success: false, error };
   }
 }
+
+/**
+ * Listen to real-time changes for Entry Statuses (Báo đã nhập)
+ */
+export function listenToEntryStatuses(onData: (statusMap: Record<string, EntryStatusData>) => void) {
+  return onSnapshot(
+    query(collection(db, ENTRY_STATUS_COL)),
+    (snapshot) => {
+      if (!snapshot.empty) {
+        const map: Record<string, EntryStatusData> = {};
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          const key = data.docKey || docSnap.id;
+          const { docKey, ...cleanData } = data;
+          map[key] = cleanData as EntryStatusData;
+        });
+        onData(map);
+      }
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, ENTRY_STATUS_COL);
+    }
+  );
+}
+
+/**
+ * Save single Entry Status (Báo đã nhập)
+ */
+export async function saveEntryStatusToFirestore(docKey: string, data: EntryStatusData) {
+  try {
+    const cleanData = sanitizeForFirestore({ ...data, docKey });
+    await setDoc(doc(db, ENTRY_STATUS_COL, docKey), cleanData, { merge: true });
+    return { success: true };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `${ENTRY_STATUS_COL}/${docKey}`);
+    return { success: false, error };
+  }
+}
+

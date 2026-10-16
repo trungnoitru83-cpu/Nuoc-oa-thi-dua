@@ -1,10 +1,19 @@
-export type Role = 'teacher' | 'department_head' | 'principal' | 'staff';
+export type Role = 'teacher' | 'department_head' | 'principal' | 'staff' | 'admin';
 
 export type ClassificationType = 
   | 'HOAN_THANH_XUAT_SAC' // >= 90
   | 'HOAN_THANH_TOT'      // 80 - <90
   | 'HOAN_THANH'          // 50 - <80
   | 'KHONG_HOAN_THANH';   // < 50
+
+export interface EntryStatusData {
+  month: number;
+  year: number;
+  isEntered: boolean;
+  enteredAt: string;
+  enteredBy: string;
+  docKey?: string;
+}
 
 export interface Teacher {
   id: string;
@@ -18,17 +27,26 @@ export interface Teacher {
   department: string; // Tổ chuyên môn
   school: string; // Trường
   avatar?: string;
+  isAdmin?: boolean;
+  role?: Role;
   teacherSignature?: string; // Data URL or Image URL
   principalSignature?: string; // Data URL or Image URL
 }
 
 export interface Form01Task {
   id: string;
-  taskName: string; // Tên nhiệm vụ trong tháng
-  assignedTarget: string; // Chỉ tiêu / Yêu cầu
-  result: string; // Kết quả đạt được
+  category?: 'I' | 'II' | 'III' | 'IV' | string; // I. Kế hoạch năm, II. Chuyên môn TX, III. Đột xuất, IV. Khác
+  taskName: string; // Tên nhiệm vụ trong tháng (Textbox)
+  taskNature?: string; // Tính chất công việc (Dropdown)
+  assignedTarget: string; // Sản phẩm / Chỉ tiêu giao (Textbox)
+  workDone?: string; // Công việc đã thực hiện trong kỳ đánh giá (Textbox)
+  executionTime?: string; // Thời gian thực hiện (Textbox/Dropdown)
+  result?: string; // Kết quả đạt được
+  progress?: 'Đúng hạn' | 'Trước tiến độ' | 'Chậm tiến độ (có lý do)' | 'Chậm tiến độ (không lý do)' | 'Đang thực hiện' | string; // Mức độ thực hiện (Dropdown)
+  quality?: 'Đạt chất lượng cao / Vượt yêu cầu' | 'Đạt yêu cầu' | 'Cần cải thiện' | 'Chưa đạt yêu cầu' | string; // Chất lượng công việc (Dropdown)
   completionRate: number; // 0 - 100%
   status: 'completed' | 'in_progress' | 'not_completed';
+  noteExplanation?: string; // Kiến nghị, giải trình (Dropdown/Text)
   evidenceLink?: string; // Link đính kèm minh chứng
 }
 
@@ -40,6 +58,14 @@ export interface Form01Data {
   overallSummary: string; // Đánh giá chung mức độ hoàn thành
   attachedFileUrl?: string; // Link đính kèm file Mẫu 01 gốc
   updatedAt: string;
+  
+  // Signature Block fields for Mẫu 01 (Cá nhân người tự đánh giá - PHT/TTCM - Hiệu trưởng)
+  evaluatorName?: string; // Họ và tên người tự đánh giá
+  evaluatorSignature?: string; // Data URL / URL Chữ ký người tự đánh giá
+  leaderName?: string; // Họ và tên PHT / Tổ trưởng chuyên môn
+  leaderSignature?: string; // Data URL / URL Chữ ký PHT / TTCM
+  principalName?: string; // Họ và tên Hiệu trưởng
+  principalSignature?: string; // Data URL / URL Chữ ký Hiệu trưởng
 }
 
 export interface BenchmarkTier {

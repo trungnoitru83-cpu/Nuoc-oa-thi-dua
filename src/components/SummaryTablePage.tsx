@@ -1,28 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { Award, Search, Filter, Printer, Download, UserPlus, Eye, FileSpreadsheet, CheckCircle, AlertTriangle, ShieldCheck, HelpCircle, FileText, Check, RefreshCw, CloudCheck } from 'lucide-react';
-import { Teacher, Form03Evaluation, Form01Data, ClassificationType } from '../types';
+import { Award, Search, Filter, Printer, Download, UserPlus, Eye, FileSpreadsheet, CheckCircle, AlertTriangle, ShieldCheck, HelpCircle, FileText, Check, RefreshCw, CloudCheck, ShieldAlert, Clock, XCircle, UserCheck } from 'lucide-react';
+import { Teacher, Form03Evaluation, Form01Data, ClassificationType, Role, EntryStatusData } from '../types';
 import { CLASSIFICATION_RULES, getClassificationLabel, getClassification, isLeaderTeacher } from '../data/form03Criteria';
 import { getTeacherEmulationCode } from '../data/mockTeachers';
 import { exportToWord } from '../lib/wordExport';
 import { syncAllTeachersToGoogleSheet } from '../lib/googleSheetService';
 
 interface SummaryTablePageProps {
+  currentUser?: Teacher | null;
+  currentRole?: Role;
   teachers: Teacher[];
   evaluations: Record<string, Form03Evaluation>;
   form01DataMap?: Record<string, Form01Data>;
   selectedMonth: number;
   selectedYear?: number;
+  entryStatus?: EntryStatusData;
+  onMarkEntryStatus?: (month: number, year: number, isEntered: boolean) => void;
   onSelectTeacherForView: (teacher: Teacher, tab: 'profile' | 'evaluation') => void;
-  onOpenManageTeachersModal: () => void;
+  onOpenManageTeachersModal: (initialAddAdmin?: boolean) => void;
   onOpenPrintModal: (type: 'summary', teacherId?: string) => void;
 }
 
 export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
+  currentUser,
+  currentRole,
   teachers,
   evaluations,
   form01DataMap,
   selectedMonth,
   selectedYear = 2026,
+  entryStatus,
+  onMarkEntryStatus,
   onSelectTeacherForView,
   onOpenManageTeachersModal,
   onOpenPrintModal
@@ -208,11 +216,55 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
     exportToWord(html, `Bang_Tong_Hop_Thi_Dua_36_GV_Thang_${selectedMonth}_${selectedYear}`);
   };
 
+  // Check Admin permission
+  const isAdmin =
+    currentUser?.isAdmin === true ||
+    currentUser?.email === 'trungnoitru83@gmail.com' ||
+    currentUser?.email === 'anh.nguyen@nuocoa.edu.vn' ||
+    currentUser?.emulationCode === 'TĐ0001' ||
+    currentUser?.role === 'admin' ||
+    currentRole === 'admin' ||
+    currentRole === 'principal' ||
+    Boolean(currentUser?.position?.toLowerCase().includes('hiệu trưởng')) ||
+    Boolean(currentUser?.position?.toLowerCase().includes('quản trị'));
+
+  if (!isAdmin) {
+    return (
+      <div className="max-w-4xl mx-auto my-12 p-8 sm:p-12 bg-white dark:bg-slate-900 rounded-3xl border-2 border-amber-300 dark:border-amber-700 shadow-xl text-center">
+        <div className="w-20 h-20 bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm ring-8 ring-amber-50 dark:ring-amber-950/40">
+          <ShieldAlert className="w-10 h-10" />
+        </div>
+        <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mb-3 tracking-tight">
+          Quyền Truy Cập Bị Hạn Chế (Chỉ Admin)
+        </h2>
+        <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 max-w-xl mx-auto mb-8 font-medium leading-relaxed">
+          Trang <strong className="text-slate-900 dark:text-white">File Bảng Tổng Hợp</strong> chỉ dành riêng cho <strong className="text-amber-600 dark:text-amber-400">Quản trị viên (Admin) / Ban Giám Hiệu</strong>. Tài khoản của bạn (<span className="font-bold text-blue-600 dark:text-blue-400">{currentUser?.fullName || currentUser?.email || 'Viên chức'}</span>) không có quyền xem thông tin file tổng hợp thi đua.
+        </p>
+        <div className="flex flex-wrap justify-center items-center gap-3">
+          <button
+            onClick={() => onSelectTeacherForView(currentUser || teachers[0], 'profile')}
+            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs sm:text-sm rounded-2xl transition shadow-md cursor-pointer flex items-center gap-2"
+          >
+            <UserCheck className="w-4 h-4" />
+            <span>Về Trang Cá Nhân Mẫu 01</span>
+          </button>
+          <button
+            onClick={() => onSelectTeacherForView(currentUser || teachers[0], 'evaluation')}
+            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs sm:text-sm rounded-2xl transition shadow-md cursor-pointer flex items-center gap-2"
+          >
+            <Award className="w-4 h-4" />
+            <span>Về Trang Chấm Điểm Mẫu 03</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6">
       
       {/* Title & Top Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="px-3 py-1 text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 rounded-full">
@@ -239,7 +291,7 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
           </div>
 
           <button
-            onClick={onOpenManageTeachersModal}
+            onClick={() => onOpenManageTeachersModal(false)}
             className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs rounded-2xl transition shadow-sm cursor-pointer"
           >
             <UserPlus className="w-4 h-4 text-amber-300" />
@@ -282,6 +334,93 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
         </div>
       </div>
 
+      {/* Panel Báo đã nhập & Ngày giờ đã nhập */}
+      <div className={`mb-6 p-5 rounded-3xl border-2 transition-all shadow-sm ${
+        entryStatus?.isEntered
+          ? 'bg-emerald-500/10 border-emerald-500/40 dark:bg-emerald-950/40 dark:border-emerald-700/60'
+          : 'bg-amber-500/10 border-amber-500/40 dark:bg-amber-950/40 dark:border-amber-700/60'
+      }`}>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start md:items-center gap-3.5">
+            <div className={`p-3 rounded-2xl shrink-0 ${
+              entryStatus?.isEntered
+                ? 'bg-emerald-600 text-white shadow-md ring-4 ring-emerald-500/20'
+                : 'bg-amber-500 text-white shadow-md ring-4 ring-amber-500/20'
+            }`}>
+              {entryStatus?.isEntered ? (
+                <CheckCircle className="w-6 h-6" />
+              ) : (
+                <Clock className="w-6 h-6 animate-pulse" />
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`px-3 py-0.5 text-xs font-black rounded-full uppercase tracking-wider ${
+                  entryStatus?.isEntered
+                    ? 'bg-emerald-200 text-emerald-900 dark:bg-emerald-900/90 dark:text-emerald-100'
+                    : 'bg-amber-200 text-amber-900 dark:bg-amber-900/90 dark:text-amber-100'
+                }`}>
+                  {entryStatus?.isEntered ? 'ĐÃ BÁO NHẬP DỮ LIỆU' : 'CHƯA BÁO NHẬP DỮ LIỆU'}
+                </span>
+                <span className="text-xs font-extrabold text-slate-500 dark:text-slate-400">
+                  Tháng {selectedMonth}/{selectedYear}
+                </span>
+              </div>
+
+              {entryStatus?.isEntered ? (
+                <p className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 mt-1.5 flex items-center gap-1.5 flex-wrap">
+                  <span className="text-emerald-700 dark:text-emerald-400 font-black">Ngày giờ đã nhập:</span>
+                  <span className="font-mono bg-white dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 font-black text-slate-900 dark:text-white shadow-xs">
+                    {entryStatus.enteredAt}
+                  </span>
+                  {entryStatus.enteredBy && (
+                    <span className="text-slate-500 dark:text-slate-400 font-medium text-xs">
+                      (Bởi Quản trị viên: <strong>{entryStatus.enteredBy}</strong>)
+                    </span>
+                  )}
+                </p>
+              ) : (
+                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium mt-1">
+                  Nhấn nút bên cạnh để xác nhận và ghi nhận mốc ngày giờ đã hoàn thành nhập dữ liệu thi đua Tháng {selectedMonth}/{selectedYear}.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {!entryStatus?.isEntered ? (
+              <button
+                onClick={() => onMarkEntryStatus && onMarkEntryStatus(selectedMonth, selectedYear, true)}
+                className="w-full sm:w-auto px-5 py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer ring-4 ring-emerald-500/20"
+              >
+                <CheckCircle className="w-5 h-5 text-emerald-100" />
+                <span>BÁO ĐÃ NHẬP DỮ LIỆU</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                <button
+                  onClick={() => onMarkEntryStatus && onMarkEntryStatus(selectedMonth, selectedYear, true)}
+                  className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  title="Nhấn để cập nhật lại thời gian báo nhập mới nhất"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Cập nhật ngày giờ</span>
+                </button>
+                <button
+                  onClick={() => onMarkEntryStatus && onMarkEntryStatus(selectedMonth, selectedYear, false)}
+                  className="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                  title="Hủy xác nhận báo nhập"
+                >
+                  <XCircle className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Hủy báo</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {syncMessage && (
         <div className="mb-6 p-4 bg-emerald-50 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100 rounded-2xl border border-emerald-400 flex items-center justify-between gap-3 font-bold text-xs shadow-xs">
           <div className="flex items-center gap-2">
@@ -296,12 +435,12 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
         
         {/* Total Teachers */}
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-          <p className="text-[11px] font-bold text-slate-500 uppercase">Tổng số giáo viên</p>
+          <p className="text-[11px] font-bold text-slate-500 uppercase">Tổng viên chức / NLĐ</p>
           <div className="flex items-baseline justify-between mt-2">
-            <span className="text-2xl font-black text-slate-900 dark:text-white">{teachers.length} GV</span>
-            <span className="text-xs font-semibold text-slate-400">100%</span>
+            <span className="text-2xl font-black text-slate-900 dark:text-white">{teachers.length} người</span>
+            <span className="text-xs font-bold text-slate-500">100%</span>
           </div>
-          <p className="text-[10px] text-slate-400 mt-1">ĐTB: {avgSchoolScore} điểm</p>
+          <p className="text-[10px] text-slate-400 mt-1">ĐTB: {avgSchoolScore} điểm (Mẫu 01 & 03)</p>
         </div>
 
         {/* 1. Hoàn thành xuất sắc (>= 90đ) */}
@@ -311,12 +450,12 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
             <Award className="w-4 h-4 text-emerald-600" />
           </p>
           <div className="flex items-baseline justify-between mt-2">
-            <span className="text-2xl font-black text-emerald-700 dark:text-emerald-300">{totalExcellent} GV</span>
-            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-400">
-              {Math.round((totalExcellent / teachers.length) * 100)}%
+            <span className="text-2xl font-black text-emerald-700 dark:text-emerald-300">{totalExcellent} người</span>
+            <span className="text-xs font-extrabold text-emerald-800 dark:text-emerald-400">
+              {teachers.length > 0 ? ((totalExcellent / teachers.length) * 100).toFixed(1) : 0}%
             </span>
           </div>
-          <p className="text-[10px] text-emerald-700 dark:text-emerald-400 mt-1">Hoàn thành xuất sắc nhiệm vụ</p>
+          <p className="text-[10px] text-emerald-700 dark:text-emerald-400 mt-1">{totalExcellent}/{teachers.length} viên chức đạt xuất sắc</p>
         </div>
 
         {/* 2. Hoàn thành tốt (80 - <90đ) */}
@@ -326,12 +465,12 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
             <CheckCircle className="w-4 h-4 text-blue-600" />
           </p>
           <div className="flex items-baseline justify-between mt-2">
-            <span className="text-2xl font-black text-blue-700 dark:text-blue-300">{totalGood} GV</span>
-            <span className="text-xs font-bold text-blue-800 dark:text-blue-400">
-              {Math.round((totalGood / teachers.length) * 100)}%
+            <span className="text-2xl font-black text-blue-700 dark:text-blue-300">{totalGood} người</span>
+            <span className="text-xs font-extrabold text-blue-800 dark:text-blue-400">
+              {teachers.length > 0 ? ((totalGood / teachers.length) * 100).toFixed(1) : 0}%
             </span>
           </div>
-          <p className="text-[10px] text-blue-700 dark:text-blue-400 mt-1">Hoàn thành tốt nhiệm vụ</p>
+          <p className="text-[10px] text-blue-700 dark:text-blue-400 mt-1">{totalGood}/{teachers.length} viên chức đạt loại tốt</p>
         </div>
 
         {/* 3. Hoàn thành (50 - <80đ) */}
@@ -341,12 +480,12 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
             <AlertTriangle className="w-4 h-4 text-amber-600" />
           </p>
           <div className="flex items-baseline justify-between mt-2">
-            <span className="text-2xl font-black text-amber-700 dark:text-amber-300">{totalPass} GV</span>
-            <span className="text-xs font-bold text-amber-800 dark:text-amber-400">
-              {Math.round((totalPass / teachers.length) * 100)}%
+            <span className="text-2xl font-black text-amber-700 dark:text-amber-300">{totalPass} người</span>
+            <span className="text-xs font-extrabold text-amber-800 dark:text-amber-400">
+              {teachers.length > 0 ? ((totalPass / teachers.length) * 100).toFixed(1) : 0}%
             </span>
           </div>
-          <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1">Hoàn thành nhiệm vụ</p>
+          <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1">{totalPass}/{teachers.length} viên chức hoàn thành</p>
         </div>
 
         {/* 4. Không hoàn thành (<50đ) */}
@@ -356,12 +495,12 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
             <HelpCircle className="w-4 h-4 text-rose-600" />
           </p>
           <div className="flex items-baseline justify-between mt-2">
-            <span className="text-2xl font-black text-rose-700 dark:text-rose-300">{totalFail} GV</span>
-            <span className="text-xs font-bold text-rose-800 dark:text-rose-400">
-              {Math.round((totalFail / teachers.length) * 100)}%
+            <span className="text-2xl font-black text-rose-700 dark:text-rose-300">{totalFail} người</span>
+            <span className="text-xs font-extrabold text-rose-800 dark:text-rose-400">
+              {teachers.length > 0 ? ((totalFail / teachers.length) * 100).toFixed(1) : 0}%
             </span>
           </div>
-          <p className="text-[10px] text-rose-700 dark:text-rose-400 mt-1">Không hoàn thành nhiệm vụ</p>
+          <p className="text-[10px] text-rose-700 dark:text-rose-400 mt-1">{totalFail}/{teachers.length} viên chức chưa đạt</p>
         </div>
 
       </div>

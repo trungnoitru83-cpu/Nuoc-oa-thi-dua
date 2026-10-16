@@ -228,3 +228,56 @@ body {
 .dark .border-theme-accent {
   border-color: var(--theme-accent-border-dark);
 }
+
+/* Quy định Thể thức và Kỹ thuật trình bày văn bản hành chính theo Nghị định 30/2020/NĐ-CP khi In / Xuất PDF */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 20mm 15mm 20mm 30mm; /* Lề trên 20mm, Lề phải 15mm, Lề dưới 20mm, Lề trái 30mm (chuẩn NĐ 30) */
+  }
+
+  html, body {
+    font-family: 'Times New Roman', Times, serif !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 13pt !important;
+    line-height: 1.35 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Structural elements formatting for print */
+  #printable-report-area {
+    width: 100% !important;
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: 'Times New Roman', Times, serif !important;
+  }
+
+  table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    page-break-inside: auto !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    page-break-after: auto !important;
+  }
+
+  th, td {
+    border: 1pt solid #000000 !important;
+    color: #000000 !important;
+    font-family: 'Times New Roman', Times, serif !important;
+  }
+
+  .print\:hidden {
+    display: none !important;
+  }
+}

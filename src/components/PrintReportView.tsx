@@ -2,7 +2,7 @@ import React from 'react';
 import { Printer, X, FileText } from 'lucide-react';
 import { Teacher, Form01Data, Form03Evaluation } from '../types';
 import { FORM_03_CRITERIA, getClassification, getClassificationLabel, getCriteriaForTeacher, isLeaderTeacher } from '../data/form03Criteria';
-import { exportToWord } from '../lib/wordExport';
+import { exportToWord, exportForm03ToWord } from '../lib/wordExport';
 
 interface PrintReportViewProps {
   type: 'form01' | 'form03' | 'summary';
@@ -36,11 +36,14 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
   };
 
   const handleExportWord = () => {
+    if (type === 'form03' && currentTeacher && evaluation) {
+      exportForm03ToWord(currentTeacher, evaluation, selectedMonth, selectedYear);
+      return;
+    }
+
     const reportElement = document.getElementById('printable-report-area');
     if (reportElement) {
-      const fileName = type === 'form03' 
-        ? `Mau_${isLeaderTeacher(currentTeacher) ? '02' : '03'}_${currentTeacher?.fullName.replace(/\s+/g, '_')}_Thang_${selectedMonth}_${selectedYear}`
-        : type === 'form01'
+      const fileName = type === 'form01'
         ? `Mau_01_${currentTeacher?.fullName.replace(/\s+/g, '_')}_Thang_${selectedMonth}_${selectedYear}`
         : `Bang_Tong_Hop_Thi_Dua_36_GV_Thang_${selectedMonth}_${selectedYear}`;
 

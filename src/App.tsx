@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Teacher, Form01Data, Form03Evaluation, Role } from './types';
+import { Teacher, Form01Data, Form03Evaluation, Role, EntryStatusData } from './types';
 import { INITIAL_TEACHERS, createDefaultForm01, createDefaultEvaluation } from './data/mockTeachers';
 import { Navbar } from './components/Navbar';
 import { LoginPage } from './components/LoginPage';
@@ -15,9 +15,11 @@ import {
   listenToTeachers,
   listenToForm01,
   listenToEvaluations,
+  listenToEntryStatuses,
   saveTeacherToFirestore,
   saveForm01ToFirestore,
-  saveEvaluationToFirestore
+  saveEvaluationToFirestore,
+  saveEntryStatusToFirestore
 } from './lib/firebaseService';
 import {
   saveEvaluationToGoogleSheet
@@ -92,8 +94,20 @@ export default function App() {
     return initial;
   });
 
+  // Entry Status State (yYear_mMonth -> EntryStatusData)
+  const [entryStatuses, setEntryStatuses] = useState<Record<string, EntryStatusData>>(() => {
+    const saved = localStorage.getItem('nuocoa_entry_statuses');
+    return saved ? JSON.parse(saved) : {};
+  });
+
   // Modals
-  const [isManageModalOpen, setIsManageModalOpen] = useState(false);
+  const [manageModalConfig, setManageModalConfig] = useState<{
+    isOpen: boolean;
+    initialAddAdmin: boolean;
+  }>({
+    isOpen: false,
+    initialAddAdmin: false
+  });
   const [printModalConfig, setPrintModalConfig] = useState<{
     isOpen: boolean;
     type: 'form01' | 'form03' | 'summary';
@@ -129,10 +143,18 @@ export default function App() {
       }
     });
 
+    // 5. Real-time subscriber for Entry Statuses (Báo đã nhập)
+    const unsubEntryStatus = listenToEntryStatuses((remoteStatuses) => {
+      if (Object.keys(remoteStatuses).length > 0) {
+        setEntryStatuses(prev => ({ ...prev, ...remoteStatuses }));
+      }
+    });
+
     return () => {
       unsubTeachers();
       unsubForm01();
       unsubEvals();
+      unsubEntryStatus();
     };
   }, []);
 
@@ -148,6 +170,34 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('nuocoa_evaluations', JSON.stringify(evaluations));
   }, [evaluations]);
+
+  useEffect(() => {
+    localStorage.setItem('nuocoa_entry_statuses', JSON.stringify(entryStatuses));
+  }, [entryStatuses]);
+
+  // Handle Mark Entry Status ("Báo đã nhập")
+  const handleMarkEntryStatus = (month: number, year: number, isEntered: boolean) => {
+    const key = `y${year}_m${month}`;
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('vi-VN');
+    const timeStr = now.toLocaleTimeString('vi-VN');
+    const timestamp = `${dateStr} ${timeStr}`;
+
+    const newStatus: EntryStatusData = {
+      month,
+      year,
+      isEntered,
+      enteredAt: timestamp,
+      enteredBy: currentUser?.fullName || currentUser?.email || 'Quản trị viên'
+    };
+
+    setEntryStatuses(prev => ({
+      ...prev,
+      [key]: newStatus
+    }));
+
+    saveEntryStatusToFirestore(key, newStatus);
+  };
 
   // Login Handlers
   const handleLogin = (teacher: Teacher, role: Role) => {
@@ -240,17 +290,26 @@ export default function App() {
     setTeachers(prev => [...prev, newTeacher]);
     saveTeacherToFirestore(newTeacher);
 
-    // Create default forms
-    const key01 = `${newTeacher.id}_y${selectedYear}_m${selectedMonth}`;
-    const key03 = `${newTeacher.id}_y${selectedYear}_m${selectedMonth}`;
-    const defaultF01 = createDefaultForm01(newTeacher.id, selectedMonth);
-    const defaultF03 = createDefaultEvaluation(newTeacher.id, selectedMonth, selectedYear);
+    // Create default Mẫu 01 and Mẫu 03/02 for all active months (4..12) in selectedYear
+    const activeMonths = [4, 5, 6, 7, 8, 9, 10, 11, 12];
+    const newForm01Updates: Record<string, Form01Data> = {};
+    const newEvalUpdates: Record<string, Form03Evaluation> = {};
 
-    setForm01Data(prev => ({ ...prev, [key01]: defaultF01 }));
-    setEvaluations(prev => ({ ...prev, [key03]: defaultF03 }));
+    activeMonths.forEach(m => {
+      const key01 = `${newTeacher.id}_y${selectedYear}_m${m}`;
+      const key03 = `${newTeacher.id}_y${selectedYear}_m${m}`;
+      const defaultF01 = createDefaultForm01(newTeacher.id, m);
+      const defaultF03 = createDefaultEvaluation(newTeacher.id, m, selectedYear);
 
-    saveForm01ToFirestore(key01, defaultF01);
-    saveEvaluationToFirestore(key03, defaultF03);
+      newForm01Updates[key01] = defaultF01;
+      newEvalUpdates[key03] = defaultF03;
+
+      saveForm01ToFirestore(key01, defaultF01);
+      saveEvaluationToFirestore(key03, defaultF03);
+    });
+
+    setForm01Data(prev => ({ ...prev, ...newForm01Updates }));
+    setEvaluations(prev => ({ ...prev, ...newEvalUpdates }));
   };
 
   const handleDeleteTeacher = (teacherId: string) => {
@@ -347,16 +406,20 @@ export default function App() {
 
         {currentUser && activeTab === 'summary' && (
           <SummaryTablePage
+            currentUser={currentUser}
+            currentRole={currentRole}
             teachers={teachers}
             evaluations={summaryEvaluationsMap}
             form01DataMap={summaryForm01Map}
             selectedMonth={selectedMonth}
             selectedYear={selectedYear}
+            entryStatus={entryStatuses[`y${selectedYear}_m${selectedMonth}`]}
+            onMarkEntryStatus={handleMarkEntryStatus}
             onSelectTeacherForView={(t, tab) => {
               setSelectedTeacher(t);
               setActiveTab(tab);
             }}
-            onOpenManageTeachersModal={() => setIsManageModalOpen(true)}
+            onOpenManageTeachersModal={(addAdmin) => setManageModalConfig({ isOpen: true, initialAddAdmin: Boolean(addAdmin) })}
             onOpenPrintModal={(type, teacherId) => {
               setPrintModalConfig({
                 isOpen: true,
@@ -382,8 +445,9 @@ export default function App() {
 
       {/* Modals */}
       <ManageTeachersModal
-        isOpen={isManageModalOpen}
-        onClose={() => setIsManageModalOpen(false)}
+        isOpen={manageModalConfig.isOpen}
+        initialAddAdmin={manageModalConfig.initialAddAdmin}
+        onClose={() => setManageModalConfig({ isOpen: false, initialAddAdmin: false })}
         teachers={teachers}
         onAddTeacher={handleAddTeacher}
         onUpdateTeacher={handleUpdateTeacher}

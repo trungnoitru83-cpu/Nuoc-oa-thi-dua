@@ -4,7 +4,7 @@ import { Teacher, Form03Evaluation, Role, CriteriaScore, CriteriaItem } from '..
 import { FORM_03_CRITERIA, CLASSIFICATION_RULES, getClassification, getClassificationLabel, getCriteriaForTeacher, isLeaderTeacher } from '../data/form03Criteria';
 import { getTeacherEmulationCode } from '../data/mockTeachers';
 import { SignatureModal } from './SignatureModal';
-import { exportToWord } from '../lib/wordExport';
+import { exportToWord, exportForm03ToWord } from '../lib/wordExport';
 
 interface Form03PageProps {
   teachers: Teacher[];
@@ -348,11 +348,11 @@ export const Form03Page: React.FC<Form03PageProps> = ({
             </button>
 
             <button
-              onClick={() => onOpenPrintModal('form03', currentTeacher.id)}
+              onClick={() => exportForm03ToWord(currentTeacher, evaluation, selectedMonth, selectedYear, selectedFormType)}
               className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs rounded-2xl transition shadow-sm cursor-pointer"
             >
               <FileText className="w-4 h-4 text-emerald-200" />
-              <span>Xuất File Word (.doc)</span>
+              <span>Xuất File Word ({isLeader ? 'Mẫu 02' : 'Mẫu 03'} NĐ 30)</span>
             </button>
 
             <button
@@ -365,54 +365,56 @@ export const Form03Page: React.FC<Form03PageProps> = ({
           </div>
         </div>
 
-        {/* Teachers Quick Selector Bar */}
-        <div className="mt-4 flex items-center justify-between gap-2">
-          
-          <button
-            disabled={!prevTeacher}
-            onClick={() => prevTeacher && onSelectTeacher(prevTeacher)}
-            className="p-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-black disabled:opacity-40 transition shrink-0 cursor-pointer"
-            title={prevTeacher ? `GV trước: ${prevTeacher.fullName}` : ''}
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
+        {/* Teachers Quick Selector Bar (Chỉ hiển thị cho Quản trị & Hiệu trưởng, ẩn đối với Viên chức đăng nhập cá nhân) */}
+        {(currentRole === 'admin' || currentRole === 'principal') && (
+          <div className="mt-4 flex items-center justify-between gap-2">
+            
+            <button
+              disabled={!prevTeacher}
+              onClick={() => prevTeacher && onSelectTeacher(prevTeacher)}
+              className="p-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-black disabled:opacity-40 transition shrink-0 cursor-pointer"
+              title={prevTeacher ? `GV trước: ${prevTeacher.fullName}` : ''}
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
 
-          <div className="flex-1 overflow-x-auto flex items-center gap-1.5 py-1 scrollbar-thin px-2">
-            <span className="text-xs font-black text-slate-700 dark:text-slate-300 shrink-0 mr-1">
-              Chọn GV ({currentIndex + 1}/{teachers.length}):
-            </span>
-            {teachers.map((t, idx) => {
-              const code = t.emulationCode || getTeacherEmulationCode(t, idx);
-              const isCurrent = t.id === currentTeacher.id;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => onSelectTeacher(t)}
-                  className={`px-3 py-1.5 text-xs font-black rounded-xl whitespace-nowrap transition shrink-0 flex items-center gap-1 border-2 cursor-pointer ${
-                    isCurrent
-                      ? 'btn-theme border-transparent shadow-md'
-                      : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-300 dark:border-slate-700 hover:border-slate-500 hover:bg-slate-100'
-                  }`}
-                >
-                  <span className={`text-[10px] font-mono font-black px-1 rounded ${isCurrent ? 'bg-white text-slate-950 shadow-xs' : 'bg-slate-900 text-white dark:bg-slate-700'}`}>
-                    {code}
-                  </span>
-                  <span>{t.fullName.split(' ').pop()}</span>
-                </button>
-              );
-            })}
+            <div className="flex-1 overflow-x-auto flex items-center gap-1.5 py-1 scrollbar-thin px-2">
+              <span className="text-xs font-black text-slate-700 dark:text-slate-300 shrink-0 mr-1">
+                Chọn GV ({currentIndex + 1}/{teachers.length}):
+              </span>
+              {teachers.map((t, idx) => {
+                const code = t.emulationCode || getTeacherEmulationCode(t, idx);
+                const isCurrent = t.id === currentTeacher.id;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => onSelectTeacher(t)}
+                    className={`px-3 py-1.5 text-xs font-black rounded-xl whitespace-nowrap transition shrink-0 flex items-center gap-1 border-2 cursor-pointer ${
+                      isCurrent
+                        ? 'btn-theme border-transparent shadow-md'
+                        : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-300 dark:border-slate-700 hover:border-slate-500 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className={`text-[10px] font-mono font-black px-1 rounded ${isCurrent ? 'bg-white text-slate-950 shadow-xs' : 'bg-slate-900 text-white dark:bg-slate-700'}`}>
+                      {code}
+                    </span>
+                    <span>{t.fullName.split(' ').pop()}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              disabled={!nextTeacher}
+              onClick={() => nextTeacher && onSelectTeacher(nextTeacher)}
+              className="p-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-black disabled:opacity-40 transition shrink-0 cursor-pointer"
+              title={nextTeacher ? `GV kế tiếp: ${nextTeacher.fullName}` : ''}
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+
           </div>
-
-          <button
-            disabled={!nextTeacher}
-            onClick={() => nextTeacher && onSelectTeacher(nextTeacher)}
-            className="p-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-black disabled:opacity-40 transition shrink-0 cursor-pointer"
-            title={nextTeacher ? `GV kế tiếp: ${nextTeacher.fullName}` : ''}
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
-
-        </div>
+        )}
 
       </div>
 
