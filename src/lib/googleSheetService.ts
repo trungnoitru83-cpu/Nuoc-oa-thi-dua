@@ -265,7 +265,7 @@ export async function saveForm01ToGoogleSheet(
 
   const tasksList = form01.tasks || [];
   
-  // Enriched items list containing all columns from C to N with Vietnamese & English property names
+  // Enriched items list containing all columns with snake_case and camelCase property names
   const items = tasksList.map((t: any, idx: number) => {
     const taskMaBanGhi = `BG01-${yearStr}${monthPad}-${teacherIdClean}-${idx + 1}`;
     const percentStr = `${t.completionRate || 100}%`;
@@ -273,12 +273,29 @@ export async function saveForm01ToGoogleSheet(
       stt: idx + 1,
       sttViec: idx + 1,
       maBanGhi: taskMaBanGhi,
+      ma_ban_ghi: taskMaBanGhi,
       kyDanhGia,
+      ky_danh_gia: kyDanhGia,
       maThiDua: teacherIdClean,
+      ma_thi_dua: teacherIdClean,
       teacherId: teacherIdClean,
       hoTen,
+      ho_ten: hoTen,
       chucVu: (activeTeacher?.position || 'Giáo viên').trim(),
       toChuyenMon: (activeTeacher?.department || 'Tổ chuyên môn').trim(),
+      to_phong_ban: (activeTeacher?.department || 'Tổ chuyên môn').trim(),
+      
+      // Snake_case keys as requested:
+      noi_dung: t.taskName || t.content || `Nhiệm vụ ${idx + 1}`,
+      san_pham: t.assignedTarget || 'Hoàn thành 100%',
+      do_phuc_tap: t.taskNature || 'Bình thường',
+      vai_tro: t.taskNature || 'Chủ trì',
+      trang_thai: t.workDone || t.result || 'Đã hoàn thành',
+      tien_do: percentStr,
+      chat_luong: t.quality || 'Đạt',
+      kien_nghi: t.noteExplanation || 'Không có',
+
+      // CamelCase & Vietnamese keys for compatibility:
       noiDung: t.taskName || t.content || `Nhiệm vụ ${idx + 1}`,
       noiDungCongViec: t.taskName || t.content || `Nhiệm vụ ${idx + 1}`,
       congViec: t.taskName || `Nhiệm vụ ${idx + 1}`,
@@ -286,9 +303,9 @@ export async function saveForm01ToGoogleSheet(
       sanPham: t.assignedTarget || 'Hoàn thành 100%',
       mucTieu: t.assignedTarget || 'Hoàn thành 100%',
       assignedTarget: t.assignedTarget || 'Hoàn thành 100%',
-      doPhucTap: t.taskNature || 'Thường xuyên',
-      tinhChat: t.taskNature || 'Thường xuyên',
-      taskNature: t.taskNature || 'Thường xuyên',
+      doPhucTap: t.taskNature || 'Bình thường',
+      tinhChat: t.taskNature || 'Bình thường',
+      taskNature: t.taskNature || 'Bình thường',
       vaiTro: t.taskNature || 'Chủ trì',
       role: t.taskNature || 'Chủ trì',
       trangThai: t.workDone || t.result || 'Đã hoàn thành',
@@ -300,9 +317,9 @@ export async function saveForm01ToGoogleSheet(
       tyLeHoanThanh: t.completionRate || 100,
       completionRate: t.completionRate || 100,
       progress: t.progress || 'Đúng tiến độ',
-      chatLuong: t.quality || 'Đạt yêu cầu',
-      chatLuongHoanThanh: t.quality || 'Đạt yêu cầu',
-      quality: t.quality || 'Đạt yêu cầu',
+      chatLuong: t.quality || 'Đạt',
+      chatLuongHoanThanh: t.quality || 'Đạt',
+      quality: t.quality || 'Đạt',
       kienNghi: t.noteExplanation || 'Không có',
       deXuat: t.noteExplanation || 'Không có',
       noteExplanation: t.noteExplanation || 'Không có',
@@ -316,15 +333,21 @@ export async function saveForm01ToGoogleSheet(
 
   const payload = {
     type: "mau01",
-    action: "save_mau01",
-    kyDanhGia,
-    teacherId: teacherIdClean,
+    action: "luu_mau01",
+    actionAlias: "save_mau01",
+    ma_thi_dua: teacherIdClean,
     maThiDua: teacherIdClean,
+    teacherId: teacherIdClean,
+    ho_ten: hoTen,
     hoTen,
+    to_phong_ban: (activeTeacher?.department || 'Tổ chuyên môn').trim(),
     toChuyenMon: (activeTeacher?.department || 'Tổ chuyên môn').trim(),
     chucVu: (activeTeacher?.position || 'Giáo viên').trim(),
-    items,
+    ky_danh_gia: kyDanhGia,
+    kyDanhGia,
+    danh_sach_cong_viec: items,
     danhSachCongViec: items,
+    items,
     congViecList: items,
     tasks: tasksList,
     maBanGhi: `BG01-${yearStr}${monthPad}-${teacherIdClean}-1`,
