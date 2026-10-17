@@ -551,7 +551,35 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
     };
     onUpdateTeacher(updatedTeacher);
 
-    // 2. Update Form 01 locally/in state
+    // 2. Formatted task items ensuring all required fields are explicitly gathered
+    const formattedTaskItems = tasks.map((t, idx) => {
+      const percentStr = `${t.completionRate || 100}%`;
+      return {
+        stt: idx + 1,
+        sttViec: idx + 1,
+        maBanGhi: `BG01-${selectedYear}${String(selectedMonth).padStart(2, '0')}-${formatTeacherId(teacher.emulationCode || teacher.id)}-${idx + 1}`,
+        noiDung: t.taskName || `Nhiệm vụ ${idx + 1}`,
+        noiDungCongViec: t.taskName || `Nhiệm vụ ${idx + 1}`,
+        sanPham: t.assignedTarget || 'Hoàn thành 100%',
+        doPhucTap: t.taskNature || 'Thường xuyên',
+        vaiTro: t.taskNature || 'Chủ trì',
+        trangThai: t.workDone || t.result || 'Đã hoàn thành',
+        tienDo: percentStr,
+        tyLeHoanThanh: t.completionRate || 100,
+        chatLuong: t.quality || 'Đạt yêu cầu',
+        kienNghi: t.noteExplanation || 'Không có',
+        thoiGian: t.executionTime || 'Trong tháng',
+        linkMinhChung: t.evidenceLink || ''
+      };
+    });
+
+    console.log(`==================== 📦 [PACKAGING MẪU 01 PAYLOAD] ====================`);
+    console.log(`👤 Cán bộ: ${updatedTeacher.fullName} (${formatTeacherId(teacher.emulationCode || teacher.id)})`);
+    console.log(`📅 Kỳ đánh giá: Tháng ${selectedMonth}/${selectedYear}`);
+    console.log(`📋 Danh sách ${formattedTaskItems.length} công việc đã gom đủ các trường (doPhucTap, vaiTro, trangThai, tienDo, chatLuong, kienNghi):`, formattedTaskItems);
+    console.log(`======================================================================`);
+
+    // 3. Update Form 01 locally/in state
     const updatedForm01: Form01Data = {
       ...form01,
       month: selectedMonth,
@@ -572,7 +600,7 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
     alert('⏳ Đang gửi dữ liệu Mẫu 01 sang Google Sheet...');
 
     try {
-      // 3. Post Mẫu 01 data to Google Sheet Web App API
+      // 4. Post Mẫu 01 data to Google Sheet Web App API
       const resForm01 = await saveForm01ToGoogleSheet(
         updatedTeacher,
         updatedForm01,
@@ -581,7 +609,7 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
         currentUser || teacher
       );
 
-      // 4. Optionally sync evaluation scores if evaluation exists
+      // 5. Optionally sync evaluation scores if evaluation exists
       if (evaluation) {
         await saveEvaluationToGoogleSheet(
           updatedTeacher,
@@ -606,6 +634,8 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
       setIsSaving(false);
     }
   };
+
+  const handleSaveMau01 = executeSaveProfile;
 
   const handleAddTask = () => {
     const newTask: Form01Task = {
