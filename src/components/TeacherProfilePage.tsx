@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Calendar, GraduationCap, Building2, School, Link as LinkIcon, FileText, CheckCircle, Plus, Trash2, ExternalLink, Save, ArrowRight, ChevronLeft, ChevronRight, Users, Send, Award, FileSpreadsheet, ShieldCheck, Copy, Upload, Download, Sparkles, Eye, EyeOff, Table, CheckSquare, Layers, Printer, FileDown } from 'lucide-react';
+import { User, Calendar, GraduationCap, Building2, School, Link as LinkIcon, FileText, CheckCircle, Plus, Trash2, ExternalLink, Save, ArrowRight, ChevronLeft, ChevronRight, Users, Send, Award, FileSpreadsheet, ShieldCheck, Copy, Upload, Download, Sparkles, Eye, EyeOff, Table, CheckSquare, Layers, Printer, FileDown, RefreshCw } from 'lucide-react';
 import { Teacher, Form01Data, Form01Task, Form03Evaluation, Role } from '../types';
 import { isLeaderTeacher, getClassification, getClassificationLabel } from '../data/form03Criteria';
 import { getTeacherEmulationCode } from '../data/mockTeachers';
 import { exportForm01ToWord, exportForm01ToPdfPrint } from '../utils/exportDecree30';
+import { saveForm01ToGoogleSheet, saveEvaluationToGoogleSheet, fetchForm01FromGoogleSheet } from '../lib/googleSheetService';
+import { formatTeacherId } from '../utils/formatTeacherId';
 
 interface SignatureBoxPadProps {
   title: string;
@@ -246,6 +248,7 @@ const SignatureBoxPad: React.FC<SignatureBoxPadProps> = ({
 };
 
 interface TeacherProfilePageProps {
+  currentUser?: Teacher | null;
   teachers?: Teacher[];
   teacher: Teacher;
   form01: Form01Data;
@@ -260,6 +263,7 @@ interface TeacherProfilePageProps {
 }
 
 export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
+  currentUser,
   teachers = [],
   teacher,
   form01,
@@ -298,6 +302,7 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
 
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [pastedCsvText, setPastedCsvText] = useState('');
   const [showVisualSheetPreview, setShowVisualSheetPreview] = useState(true);
 
@@ -464,6 +469,8 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
 
   // Sync state when selected teacher or form01 changes
   useEffect(() => {
+    let isMounted = true;
+
     setFullName(teacher.fullName);
     setDob(teacher.dob);
     setPosition(teacher.position || teacher.subject || 'Giáo viên');
@@ -476,6 +483,33 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
     setOverallSummary(form01.overallSummary || '');
     setTasks(form01.tasks || []);
     setEvaluationDate(`${selectedYear}-${selectedMonth < 10 ? '0' + selectedMonth : selectedMonth}-28`);
+
+    // Dynamic GET fetch from Google Sheet for the active teacher (TĐ13, TĐ38, etc.)
+    const activeCode = formatTeacherId(teacher.emulationCode || teacher.id);
+    if (activeCode && activeCode !== 'UNDEFINED') {
+      fetchForm01FromGoogleSheet(activeCode, selectedMonth, selectedYear)
+        .then((res) => {
+          if (isMounted && res.success && res.data) {
+            console.log(`✨ [GoogleSheet GET] Nạp dữ liệu Mẫu 01 cho ${activeCode} từ Google Sheet thành công!`);
+            if (res.data.tasks && res.data.tasks.length > 0) {
+              setTasks(res.data.tasks);
+            }
+            if (res.data.overallSummary) {
+              setOverallSummary(res.data.overallSummary);
+            }
+            if (res.data.attachedFileUrl) {
+              setAttachedFileUrl(res.data.attachedFileUrl);
+            }
+          }
+        })
+        .catch((err) => {
+          console.warn(`ℹ️ [GoogleSheet GET Notice] Sử dụng dữ liệu mặc định cho ${activeCode}:`, err);
+        });
+    }
+
+    return () => {
+      isMounted = false;
+    };
   }, [teacher, form01, selectedMonth, selectedYear]);
 
   // Indexing for teacher navigation
@@ -494,10 +528,18 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
   const clsType = getClassification(grandTotalVal);
   const clsLabel = getClassificationLabel(clsType);
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleOpenPreviewModal = (e: React.FormEvent) => {
     e.preventDefault();
+    setIsPreviewModalOpen(true);
+  };
+
+  const executeSaveProfile = async () => {
+    setIsPreviewModalOpen(false);
+    setIsSaving(true);
     
-    // Save profile update
+    // 1. Update teacher profile locally/in state
     const updatedTeacher: Teacher = {
       ...teacher,
       fullName,
@@ -509,7 +551,7 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
     };
     onUpdateTeacher(updatedTeacher);
 
-    // Save Form 01 update
+    // 2. Update Form 01 locally/in state
     const updatedForm01: Form01Data = {
       ...form01,
       month: selectedMonth,
@@ -526,8 +568,43 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
     };
     onUpdateForm01(updatedForm01);
 
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 5000);
+    // Toast notice immediately
+    alert('⏳ Đang gửi dữ liệu Mẫu 01 sang Google Sheet...');
+
+    try {
+      // 3. Post Mẫu 01 data to Google Sheet Web App API
+      const resForm01 = await saveForm01ToGoogleSheet(
+        updatedTeacher,
+        updatedForm01,
+        selectedMonth,
+        selectedYear,
+        currentUser || teacher
+      );
+
+      // 4. Optionally sync evaluation scores if evaluation exists
+      if (evaluation) {
+        await saveEvaluationToGoogleSheet(
+          updatedTeacher,
+          evaluation,
+          selectedMonth,
+          selectedYear,
+          currentUser || teacher
+        );
+      }
+
+      if (resForm01.success) {
+        setSavedSuccess(true);
+        setTimeout(() => setSavedSuccess(false), 5000);
+        alert('Đã gửi dữ liệu Mẫu 01 vào Google Sheet thành công! Vui lòng tải lại trang Google Sheet.');
+      } else {
+        alert(`❌ [LỖI LƯU MẪU 01 LÊN GOOGLE SHEET]\n\n• Nguyên nhân: ${resForm01.message}`);
+      }
+    } catch (err: any) {
+      console.warn('❌ Exception in handleSaveProfile:', err);
+      alert(`❌ [LỖI KẾT NỐI MÁY CHỦ GOOGLE SHEET]\n\n• Chi tiết: ${err?.message || 'Không thể kết nối API Web App'}`);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleAddTask = () => {
@@ -691,7 +768,7 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
         </div>
       )}
 
-      <form onSubmit={handleSaveProfile} className="space-y-8">
+      <form onSubmit={handleOpenPreviewModal} className="space-y-8">
         
         {/* Section 1: Thông tin cá nhân & chuyên môn */}
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-md border border-slate-200 dark:border-slate-800">
@@ -909,48 +986,20 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
               </div>
               <div>
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <span>2. Liên Kết File Google Sheet Mẫu 01 Tháng {selectedMonth}/{selectedYear}</span>
+                  <span>2. Liên kết file Mẫu 01 tháng {selectedMonth} năm {selectedYear}</span>
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Mỗi tháng hệ thống quản lý một đường link Google Sheet Mẫu 01 riêng biệt
+                  Mỗi tháng hệ thống quản lý một đường link Mẫu 01 riêng biệt
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-4 py-2 rounded-2xl">
-              <span className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">
-                Tỷ lệ hoàn thành:
-              </span>
-              <span className="text-sm font-extrabold text-emerald-700 dark:text-emerald-300">
-                {avgCompletion}%
-              </span>
-            </div>
           </div>
 
           {/* Import & Action Toolbar */}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3 p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={handleImportSampleTasks}
-                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-                title="Tự động nhập 4 nhiệm vụ chuẩn theo Mẫu 01 như ảnh"
-              >
-                <Sparkles className="w-4 h-4 text-amber-300" />
-                <span>⚡ Import Mẫu 01 Chuẩn</span>
-              </button>
 
-              <button
-                type="button"
-                onClick={() => setIsImportModalOpen(true)}
-                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-                title="Dán dữ liệu từ Google Sheet / Excel vào Mẫu 01"
-              >
-                <Upload className="w-4 h-4" />
-                <span>📥 Dán / Import Sheet</span>
-              </button>
-
-              <div className="h-6 w-px bg-slate-300 dark:bg-slate-700 mx-1 hidden sm:block"></div>
 
               {/* Export Decree 30 Buttons */}
               <button
@@ -984,60 +1033,7 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
             </button>
           </div>
 
-          {/* Link Attachment Input Box */}
-          <div className="mb-6 p-5 bg-gradient-to-r from-emerald-50 via-teal-50 to-blue-50 dark:from-emerald-950/40 dark:via-teal-950/30 dark:to-blue-950/30 rounded-2xl border border-emerald-300 dark:border-emerald-700">
-            <label className="block text-xs font-extrabold text-emerald-950 dark:text-emerald-200 mb-2 flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                Đường Link Google Sheet Mẫu 01 (Tháng {selectedMonth}/{selectedYear}):
-              </span>
-              <span className="text-[10px] text-emerald-800 dark:text-emerald-300 font-bold bg-emerald-200/80 dark:bg-emerald-900/80 px-2.5 py-0.5 rounded-full">
-                Mẫu chuẩn Google Sheet
-              </span>
-            </label>
-            
-            <div className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="url"
-                value={attachedFileUrl}
-                onChange={(e) => setAttachedFileUrl(e.target.value)}
-                placeholder="https://docs.google.com/spreadsheets/d/1sLOpOWvtufbaFHkcuJAa0BpC2zA4ePFZMSjY-hc-DM8/edit"
-                className="flex-1 px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-600"
-              />
 
-              {attachedFileUrl && (
-                <a
-                  href={attachedFileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow-sm shrink-0"
-                  title="Mở Google Sheet Mẫu 01 trong tab mới"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Mở Google Sheet Mẫu 01</span>
-                </a>
-              )}
-
-              <a
-                href="https://docs.google.com/spreadsheets/d/1sLOpOWvtufbaFHkcuJAa0BpC2zA4ePFZMSjY-hc-DM8/copy"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-50 text-emerald-800 dark:text-emerald-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition shrink-0"
-                title="Tạo bản sao Google Sheet mẫu cho Tháng này"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                <span>Tạo bản sao mẫu</span>
-              </a>
-            </div>
-            <div className="mt-3 text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
-              <p className="flex items-center gap-1">
-                <span>📁 Quy định tên file Google Sheet tháng {selectedMonth}: <code className="bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 rounded text-emerald-900 dark:text-emerald-200 font-mono text-[10px] font-bold">Tháng {selectedMonth} năm {selectedYear}</code></span>
-              </p>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">
-                * Dữ liệu Mẫu 01 & Mẫu 03 (Họ tên, Chức vụ, Tổ chuyên môn, Điểm Tiêu chí chung A, Điểm Chuyên môn B, Điểm cộng C, Điểm trừ D, Tổng điểm HT & Xếp loại) được tự động truyền & lưu trữ lâu dài vào Bảng Tổng Hợp Hệ Thống.
-              </p>
-            </div>
-          </div>
 
           {/* Visual Mẫu 01 Spreadsheet View (như Bảng Mẫu Ảnh) */}
           {showVisualSheetPreview && (
@@ -1620,21 +1616,27 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
           <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
             <button
               type="submit"
+              disabled={isSaving}
               className={`flex items-center gap-2 px-6 py-3 font-black text-xs rounded-xl shadow-lg transition cursor-pointer ${
                 savedSuccess
                   ? 'btn-teacher ring-4 ring-blue-300 dark:ring-blue-800 text-white animate-pulse'
                   : 'btn-teacher text-white shadow-blue-700/30'
-              }`}
+              } ${isSaving ? 'opacity-70 cursor-wait' : ''}`}
             >
-              {savedSuccess ? (
+              {isSaving ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                  <span>Đang gửi sang Google Sheet...</span>
+                </>
+              ) : savedSuccess ? (
                 <>
                   <CheckCircle className="w-5 h-5 text-white" />
                   <span>✅ ĐÃ LƯU MẪU 01 THÀNH CÔNG!</span>
                 </>
               ) : (
                 <>
-                  <Send className="w-4 h-4" />
-                  <span>Xác Nhận Nộp Mẫu 01</span>
+                  <Save className="w-4 h-4" />
+                  <span>Lưu Mẫu 01</span>
                 </>
               )}
             </button>
@@ -1716,6 +1718,140 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
                 >
                   <CheckCircle className="w-4 h-4" />
                   <span>Xác Nhận Import Mẫu 01</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Preview Data Before Sending to Google Sheet */}
+      {isPreviewModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 max-w-3xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 rounded-2xl">
+                  <FileSpreadsheet className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>📋 Xem Nhanh Dữ Liệu Sắp Gửi Lên Google Sheet</span>
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Vui lòng kiểm tra lại thông tin trước khi phát lệnh ghi đè xuống Google Sheet
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPreviewModalOpen(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Info Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold block uppercase">Mã Bản Ghi Mẫu</span>
+                  <span className="font-mono font-black text-blue-600 dark:text-blue-400">
+                    BG01-{selectedYear}{String(selectedMonth).padStart(2, '0')}-{formatTeacherId(teacher.emulationCode || teacher.id)}-[STT]
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold block uppercase">Kỳ Đánh Giá</span>
+                  <span className="font-black text-slate-800 dark:text-slate-200">
+                    Tháng {selectedMonth}/{selectedYear}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold block uppercase">Mã Thi Đua (TĐ)</span>
+                  <span className="font-mono font-black text-emerald-600 dark:text-emerald-400">
+                    {formatTeacherId(teacher.emulationCode || teacher.id)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold block uppercase">Họ và Tên Cán Bộ</span>
+                  <span className="font-extrabold text-slate-900 dark:text-white">
+                    {fullName}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold block uppercase">Tổ Chuyên Môn</span>
+                  <span className="font-bold text-slate-700 dark:text-slate-300">
+                    {department}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold block uppercase">Chức Vụ</span>
+                  <span className="font-bold text-slate-700 dark:text-slate-300">
+                    {position}
+                  </span>
+                </div>
+              </div>
+
+              {/* Tasks List Summary Table */}
+              <div>
+                <h4 className="font-extrabold text-slate-900 dark:text-white mb-2 flex items-center justify-between">
+                  <span>Danh Sách Nhiệm Vụ / Công Việc ({tasks.length} mục):</span>
+                  <span className="text-[10px] text-emerald-600 font-bold">Chế độ: Ghi đè dòng cũ</span>
+                </h4>
+
+                <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden">
+                  <table className="w-full text-left text-[11px]">
+                    <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold">
+                      <tr>
+                        <th className="p-2.5 w-10 text-center">STT</th>
+                        <th className="p-2.5 w-44 font-mono">Mã Bản Ghi (Cột A)</th>
+                        <th className="p-2.5">Nội dung Công việc / Nhiệm vụ</th>
+                        <th className="p-2.5 w-28">Mục tiêu</th>
+                        <th className="p-2.5 w-20 text-center">Tỷ lệ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {tasks.map((t, idx) => (
+                        <tr key={t.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                          <td className="p-2.5 text-center font-bold text-slate-500">{idx + 1}</td>
+                          <td className="p-2.5 font-mono font-bold text-blue-600 dark:text-blue-400">
+                            BG01-{selectedYear}{String(selectedMonth).padStart(2, '0')}-{formatTeacherId(teacher.emulationCode || teacher.id)}-{idx + 1}
+                          </td>
+                          <td className="p-2.5 font-semibold text-slate-900 dark:text-slate-100">{t.taskName}</td>
+                          <td className="p-2.5 text-slate-600 dark:text-slate-400">{t.assignedTarget || 'Hoàn thành 100%'}</td>
+                          <td className="p-2.5 text-center font-extrabold text-emerald-600 dark:text-emerald-400">
+                            {t.completionRate || 100}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800 text-[11px] text-emerald-900 dark:text-emerald-200">
+                <p className="font-bold">⚡ Cơ chế ghi đè Google Sheet:</p>
+                <p>Google Apps Script sẽ tự động xóa sạch các dòng cũ của <strong>{formatTeacherId(teacher.emulationCode || teacher.id)}</strong> thuộc kỳ {selectedMonth}/{selectedYear} tại tab <code>Data_Mau01_CongViec_Thang</code> và chèn mới {tasks.length} dòng dữ liệu trên với Mã Bản Ghi chuẩn <code>BG01-[YYYYMM]-[MãTĐ]-[STT]</code>.</p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewModalOpen(false)}
+                  className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs rounded-xl cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+
+                <button
+                  type="button"
+                  onClick={executeSaveProfile}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center gap-2 cursor-pointer"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>XÁC NHẬN GHI VÀO GOOGLE SHEET</span>
                 </button>
               </div>
             </div>

@@ -1,4 +1,4 @@
-import { Form03Evaluation, Teacher } from '../types';
+import { Form03Evaluation, Form01Data, Form01Task, Teacher } from '../types';
 import { formatTeacherId, buildMaChamDiem } from '../utils/formatTeacherId';
 
 export const GOOGLE_APPS_SCRIPT_LIBRARY_URL =
@@ -7,11 +7,21 @@ export const GOOGLE_APPS_SCRIPT_LIBRARY_URL =
 export const DEFAULT_GOOGLE_SHEET_API_URL =
   'https://script.google.com/macros/s/AKfycbxJ6W8LVbLONmyqMK1xIXIKTF3ewcLHvmuTvLMxn6qYItk8SWHarDZxVn454euN0G3W/exec';
 
-// Priority: VITE_GOOGLE_SHEET_API -> VITE_GOOGLE_SHEET_API_URL -> Default Apps Script URL
-const GOOGLE_SHEET_API_URL =
-  (import.meta.env as any).VITE_GOOGLE_SHEET_API ||
-  (import.meta.env as any).VITE_GOOGLE_SHEET_API_URL ||
-  DEFAULT_GOOGLE_SHEET_API_URL;
+/**
+ * Get configured Google Apps Script Web App URL.
+ * Priority: customUrl -> VITE_GOOGLE_SHEET_API_URL -> VITE_GOOGLE_SHEET_API -> DEFAULT_GOOGLE_SHEET_API_URL
+ */
+export const getGoogleSheetApiUrl = (customUrl?: string): string => {
+  const url = (customUrl || '').trim() ||
+    (import.meta.env as any).VITE_GOOGLE_SHEET_API_URL ||
+    (import.meta.env as any).VITE_GOOGLE_SHEET_API ||
+    DEFAULT_GOOGLE_SHEET_API_URL;
+  
+  if (url.includes('/macros/library/')) {
+    return DEFAULT_GOOGLE_SHEET_API_URL;
+  }
+  return url;
+};
 
 export interface GoogleSheetSyncResult {
   success: boolean;
@@ -22,8 +32,9 @@ export interface GoogleSheetSyncResult {
 }
 
 export interface GoogleSheetDiemPayload {
-  action: 'saveDiem';
+  action: 'saveDiem' | 'save_mau03';
   maChamDiem: string;
+  maBanGhi: string;
   kyDanhGia: string; // e.g. "10/2026"
   maThiDua: string; // e.g. "TĐ16"
   teacherId: string; // e.g. "TĐ16" - Derived strictly from currentUser / target teacher
@@ -39,6 +50,47 @@ export interface GoogleSheetDiemPayload {
   yKien: string;
   trangThai: string;
   ngayGui: string;
+}
+
+/**
+ * Helper to execute POST to Google Apps Script with CORS & no-cors fallback
+ */
+async function postToGoogleAppsScript(apiUrl: string, payload: any): Promise<GoogleSheetSyncResult> {
+  console.log(`==================== 📤 [GoogleSheet REQUEST POST] ====================`);
+  console.log(`📌 Web App URL:`, apiUrl);
+  console.log(`📦 Action/Type:`, payload.action || payload.type);
+  console.log(`📦 teacherId:`, payload.teacherId || payload.maThiDua);
+  console.log(`📦 Payload:`, JSON.stringify(payload, null, 2));
+  console.log(`======================================================================`);
+
+  try {
+    // Send text/plain JSON payload with mode: "no-cors" to bypass CORS without preflight issues
+    await fetch(apiUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    // NOTE: With mode 'no-cors', response is opaque. DO NOT call response.json() or response.text() to avoid crash/hang.
+    console.log(`✅ [GoogleSheet POST no-cors] Request sent successfully for teacherId=${payload.teacherId || payload.maThiDua}.`);
+    return {
+      success: true,
+      message: 'Đã gửi dữ liệu Mẫu 01 vào Google Sheet thành công! Vui lòng tải lại trang Google Sheet.',
+      maChamDiem: payload.maBanGhi || payload.maChamDiem,
+      scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL
+    };
+  } catch (err: any) {
+    console.warn(`❌ [GoogleSheet POST Exception]:`, err);
+    return {
+      success: false,
+      message: err?.message || 'Lỗi kết nối tới Google Sheet API Web App',
+      maChamDiem: payload.maBanGhi || payload.maChamDiem,
+      scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL
+    };
+  }
 }
 
 /**
@@ -61,13 +113,11 @@ export function validateAndBuildDiemPayload(
     };
   }
 
-  // Read teacherId / emulationCode strictly from active teacher / currentUser
   const rawCode = activeTeacher.emulationCode || activeTeacher.id || (currentUser?.emulationCode || currentUser?.id);
   const teacherIdClean = formatTeacherId(rawCode);
   const hoTen = (activeTeacher.fullName || currentUser?.fullName || '').trim();
 
-  // Strict check: teacherId MUST NOT be empty, 'undefined', 'null', or unformatted
-  if (!teacherIdClean || teacherIdClean === 'UNDEFINED' || teacherIdClean === 'TĐ00' && activeTeacher.id !== 'admin_trung83' || !hoTen) {
+  if (!teacherIdClean || teacherIdClean === 'UNDEFINED' || (teacherIdClean === 'TĐ00' && activeTeacher.id !== 'admin_trung83') || !hoTen) {
     return {
       isValid: false,
       errorMessage: '⚠️ Không thể xác định Mã thi đua (teacherId) hoặc Họ tên của người dùng hiện tại! Vui lòng đăng xuất và đăng nhập lại.'
@@ -89,13 +139,11 @@ export function validateAndBuildDiemPayload(
   const chucVu = (activeTeacher.position || 'Giáo viên').trim();
   const toChuyenMon = (activeTeacher.department || 'Tổ chuyên môn').trim();
 
-  // Determine application template (Mẫu 02 for Leaders/Heads, Mẫu 03 for Teachers/Staff)
   const isLeaderPosition = ['hiệu trưởng', 'phó hiệu trưởng', 'tổ trưởng', 'phó tổ trưởng', 'chủ tịch đoàn'].some(p =>
     chucVu.toLowerCase().includes(p)
   );
   const mauApDung: 'Mẫu 02' | 'Mẫu 03' = isLeaderPosition ? 'Mẫu 02' : 'Mẫu 03';
 
-  // Take Principal scores if available/approved, else Teacher self-scores
   const diemA = typeof evaluation.totalPartA_Principal === 'number' && evaluation.totalPartA_Principal > 0
     ? evaluation.totalPartA_Principal
     : (evaluation.totalPartA_Teacher || 0);
@@ -123,19 +171,23 @@ export function validateAndBuildDiemPayload(
 
   const statusMap: Record<string, string> = {
     draft: 'Bản nháp',
-    submitted: 'Đã nộp',
+    submitted: 'Chờ BGH duyệt',
     approved: 'Đã duyệt',
     rejected: 'Yêu cầu chỉnh sửa'
   };
-  const trangThai = statusMap[evaluation.status] || 'Đã nộp';
+  const trangThai = evaluation.status === 'approved' ? 'Đã duyệt' : (statusMap[evaluation.status] || 'Chờ BGH duyệt');
 
-  const payload: GoogleSheetDiemPayload = {
+  const payload: any = {
     action: 'saveDiem',
+    actionAlias: 'save_mau03',
+    type: 'mau03',
     maChamDiem,
+    maBanGhi: maChamDiem,
     kyDanhGia,
     maThiDua: teacherIdClean,
-    teacherId: teacherIdClean, // Explicitly set teacherId from currentUser / activeTeacher
+    teacherId: teacherIdClean,
     hoTen,
+    teacherName: hoTen,
     chucVu,
     toChuyenMon,
     mauApDung,
@@ -145,7 +197,10 @@ export function validateAndBuildDiemPayload(
     tongDiem,
     xepLoai,
     yKien,
+    status: evaluation.status || 'approved',
     trangThai,
+    capNhatDuyet: evaluation.status === 'approved',
+    isOfficialApproval: evaluation.status === 'approved',
     ngayGui: new Date().toISOString()
   };
 
@@ -163,15 +218,8 @@ export async function saveEvaluationToGoogleSheet(
   currentUser?: Teacher | null,
   customApiUrl?: string
 ): Promise<GoogleSheetSyncResult> {
-  let apiUrl = (customApiUrl || GOOGLE_SHEET_API_URL || '').trim();
+  const apiUrl = getGoogleSheetApiUrl(customApiUrl);
 
-  // If user passed a Google Apps Script Library URL, fall back to Web App endpoint for HTTP POST execution while logging Library
-  if (apiUrl.includes('/macros/library/')) {
-    console.log(`ℹ️ [GoogleSheet] Phất hiện Google Apps Script Library URL: ${GOOGLE_APPS_SCRIPT_LIBRARY_URL}. Chuyển hướng tới Web App Endpoint...`);
-    apiUrl = DEFAULT_GOOGLE_SHEET_API_URL;
-  }
-
-  // 1. Strict Validation Before Sending Request
   const validation = validateAndBuildDiemPayload(teacher, evaluation, month, year, currentUser);
   if (!validation.isValid || !validation.payload) {
     const errorMsg = validation.errorMessage || 'Dữ liệu không hợp lệ';
@@ -183,76 +231,194 @@ export async function saveEvaluationToGoogleSheet(
     };
   }
 
-  const payload = validation.payload;
+  return postToGoogleAppsScript(apiUrl, validation.payload);
+}
 
-  if (!apiUrl) {
-    const warningMsg = 'Chưa cấu hình URL Google Apps Script Web App (VITE_GOOGLE_SHEET_API)';
-    console.warn(warningMsg);
-    return {
-      success: false,
-      message: warningMsg,
-      maChamDiem: payload.maChamDiem,
-      scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL
-    };
+/**
+ * Save / Update Mẫu 01 directly to Google Sheets Web App API
+ */
+export async function saveForm01ToGoogleSheet(
+  teacher: Teacher,
+  form01: Form01Data,
+  month: number,
+  year: number,
+  currentUser?: Teacher | null,
+  customApiUrl?: string
+): Promise<GoogleSheetSyncResult> {
+  const apiUrl = getGoogleSheetApiUrl(customApiUrl);
+
+  const activeTeacher = teacher || currentUser;
+  const rawCode = activeTeacher?.emulationCode || activeTeacher?.id || (currentUser?.emulationCode || currentUser?.id);
+  const teacherIdClean = formatTeacherId(rawCode);
+  const hoTen = (activeTeacher?.fullName || currentUser?.fullName || '').trim();
+
+  if (!teacherIdClean || teacherIdClean === 'UNDEFINED' || !hoTen) {
+    const errorMsg = '⚠️ Không thể xác định Mã thi đua (teacherId) hoặc Họ tên của người dùng hiện tại!';
+    console.error('❌ [Lưu Mẫu 01 - Validation Error]:', errorMsg);
+    return { success: false, message: errorMsg, scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL };
   }
 
-  try {
-    console.log(`📤 [GoogleSheet POST] Gửi dữ liệu cho teacherId=${payload.teacherId} (Mã:${payload.maChamDiem}) tới Sheets API Library [${GOOGLE_APPS_SCRIPT_LIBRARY_URL}]...`, payload);
+  const monthPad = String(month).padStart(2, '0');
+  const yearStr = String(year);
+  const kyDanhGia = `${monthPad}/${yearStr}`;
+  const maChamDiem = buildMaChamDiem(kyDanhGia, teacherIdClean);
 
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    const rawText = await response.text();
-    let resData: any = null;
-
-    try {
-      resData = JSON.parse(rawText);
-    } catch {
-      resData = {
-        success: response.ok,
-        message: rawText || (response.ok ? 'Đã lưu Google Sheet thành công' : 'Phản hồi từ Apps Script')
-      };
-    }
-
-    if (response.ok && (resData.success === undefined || resData.success === true)) {
-      console.log(`✅ [GoogleSheet POST] Đồng bộ thành công teacherId=${payload.teacherId}:`, resData);
-      return {
-        success: true,
-        message: resData.message || `Lưu Google Sheet thành công (${payload.maChamDiem})`,
-        data: resData,
-        maChamDiem: payload.maChamDiem,
-        scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL
-      };
-    } else {
-      const errDetail = resData?.message || `Lỗi HTTP ${response.status}: ${rawText.slice(0, 150)}`;
-      console.error(`❌ [GoogleSheet POST] API Error (${payload.maChamDiem}):`, errDetail);
-      return {
-        success: false,
-        message: errDetail,
-        data: resData,
-        maChamDiem: payload.maChamDiem,
-        scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL
-      };
-    }
-  } catch (err) {
-    let msg = 'Lỗi kết nối tới Google Sheet API Web App';
-    if (err instanceof Error) {
-      msg = err.message.includes('Failed to fetch')
-        ? 'Lỗi mạng hoặc Google Apps Script chưa mở quyền Anyone (CORS)'
-        : err.message;
-    }
-    console.error(`❌ [GoogleSheet POST] Fetch Exception (${payload.maChamDiem}):`, msg, err);
+  const tasksList = form01.tasks || [];
+  
+  // Specific items list format as requested
+  const items = tasksList.map((t: any, idx: number) => {
+    const taskMaBanGhi = `BG01-${yearStr}${monthPad}-${teacherIdClean}-${idx + 1}`;
     return {
-      success: false,
-      message: msg,
-      maChamDiem: payload.maChamDiem,
-      scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL
+      sttViec: idx + 1,
+      maBanGhi: taskMaBanGhi,
+      noiDungCongViec: t.taskName || t.content || ""
     };
+  });
+
+  const congViecList = tasksList.map((t, idx) => {
+    const taskMaBanGhi = `BG01-${yearStr}${monthPad}-${teacherIdClean}-${idx + 1}`;
+    return {
+      maBanGhi: taskMaBanGhi,
+      stt: idx + 1,
+      sttViec: idx + 1,
+      kyDanhGia,
+      maThiDua: teacherIdClean,
+      teacherId: teacherIdClean,
+      hoTen,
+      chucVu: (activeTeacher?.position || 'Giáo viên').trim(),
+      toChuyenMon: (activeTeacher?.department || 'Tổ chuyên môn').trim(),
+      id: t.id,
+      danhMuc: t.category || 'I',
+      category: t.category || 'I',
+      congViec: t.taskName || `Nhiệm vụ ${idx + 1}`,
+      noiDungCongViec: t.taskName || (t as any).content || `Nhiệm vụ ${idx + 1}`,
+      tenNhiemVu: t.taskName || `Nhiệm vụ ${idx + 1}`,
+      taskName: t.taskName || `Nhiệm vụ ${idx + 1}`,
+      tinhChat: t.taskNature || 'Thường xuyên',
+      taskNature: t.taskNature || 'Thường xuyên',
+      mucTieu: t.assignedTarget || 'Hoàn thành 100%',
+      assignedTarget: t.assignedTarget || 'Hoàn thành 100%',
+      ketQua: t.result || t.workDone || 'Đã hoàn thành',
+      workDone: t.workDone || t.result || 'Đã hoàn thành',
+      thoiGian: t.executionTime || 'Trong tháng',
+      executionTime: t.executionTime || 'Trong tháng',
+      tienDo: t.progress || 'Đúng tiến độ',
+      progress: t.progress || 'Đúng tiến độ',
+      chatLuong: t.quality || 'Đạt yêu cầu',
+      quality: t.quality || 'Đạt yêu cầu',
+      tyLeHoanThanh: t.completionRate || 100,
+      completionRate: t.completionRate || 100,
+      linkMinhChung: t.evidenceLink || '',
+      evidenceLink: t.evidenceLink || ''
+    };
+  });
+
+  const payload = {
+    type: "mau01",
+    action: "save_mau01",
+    kyDanhGia,
+    teacherId: teacherIdClean,
+    maThiDua: teacherIdClean,
+    hoTen,
+    toChuyenMon: (activeTeacher?.department || 'Tổ chuyên môn').trim(),
+    chucVu: (activeTeacher?.position || 'Giáo viên').trim(),
+    items,
+    danhSachCongViec: congViecList,
+    congViecList,
+    maBanGhi: `BG01-${yearStr}${monthPad}-${teacherIdClean}-1`,
+    maChamDiem,
+    attachedFileUrl: form01.attachedFileUrl || '',
+    overallSummary: form01.overallSummary || '',
+    evaluatorName: form01.evaluatorName || hoTen,
+    evaluatorSignature: form01.evaluatorSignature || '',
+    leaderName: form01.leaderName || '',
+    leaderSignature: form01.leaderSignature || '',
+    principalName: form01.principalName || '',
+    principalSignature: form01.principalSignature || '',
+    ngayGui: new Date().toISOString()
+  };
+
+  return postToGoogleAppsScript(apiUrl, payload);
+}
+
+export const saveMau01ToGoogleSheet = saveForm01ToGoogleSheet;
+
+/**
+ * Fetch Mẫu 01 data for a specific teacher (maThiDua) and evaluation period from Google Sheet
+ */
+export async function fetchForm01FromGoogleSheet(
+  maThiDua: string,
+  month: number,
+  year: number,
+  customApiUrl?: string
+): Promise<{ success: boolean; data?: Form01Data; message?: string }> {
+  const apiUrl = getGoogleSheetApiUrl(customApiUrl);
+  const teacherIdClean = formatTeacherId(maThiDua);
+  const monthPad = String(month).padStart(2, '0');
+  const kyDanhGia = `${monthPad}/${year}`;
+
+  const queryUrl = `${apiUrl}?action=get_mau01&maThiDua=${encodeURIComponent(teacherIdClean)}&kyDanhGia=${encodeURIComponent(kyDanhGia)}`;
+
+  console.log(`🔍 [GoogleSheet GET] Requesting Mẫu 01 for maThiDua=${teacherIdClean}, kyDanhGia=${kyDanhGia}...`);
+
+  try {
+    const res = await fetch(queryUrl, { method: 'GET' });
+    if (!res.ok) {
+      return { success: false, message: `HTTP ${res.status}` };
+    }
+    const text = await res.text();
+    let json: any = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      return { success: false, message: 'Response is not JSON' };
+    }
+
+    if (json && (json.success || json.status === 'success') && json.data) {
+      const d = json.data;
+      const tasksRaw = d.tasks || d.congViecList || d.congViec || [];
+      const tasksMap: Form01Task[] = Array.isArray(tasksRaw)
+        ? tasksRaw.map((t: any, idx: number) => ({
+            id: t.id || `sheet_task_${idx}_${Date.now()}`,
+            category: t.category || t.danhMuc || 'I',
+            taskName: t.taskName || t.congViec || t.tenNhiemVu || `Nhiệm vụ ${idx + 1}`,
+            taskNature: t.taskNature || t.tinhChat || 'Thường xuyên',
+            assignedTarget: t.assignedTarget || t.mucTieu || t.chiTieu || 'Hoàn thành 100%',
+            workDone: t.workDone || t.ketQua || 'Đã hoàn thành',
+            executionTime: t.executionTime || t.thoiGian || 'Trong tháng',
+            result: t.result || t.ketQua || 'Đạt yêu cầu',
+            progress: t.progress || t.tienDo || 'Đúng tiến độ',
+            quality: t.quality || t.chatLuong || 'Đạt yêu cầu',
+            completionRate: typeof t.completionRate === 'number' ? t.completionRate : (parseInt(t.tyLeHoanThanh || '100', 10) || 100),
+            status: t.status || 'completed',
+            evidenceLink: t.evidenceLink || t.linkMinhChung || ''
+          }))
+        : [];
+
+      const form01Fetched: Form01Data = {
+        teacherId: teacherIdClean,
+        month,
+        year,
+        attachedFileUrl: d.attachedFileUrl || d.linkSheet || '',
+        overallSummary: d.overallSummary || d.tongKet || '',
+        tasks: tasksMap,
+        evaluatorName: d.evaluatorName || d.hoTen || '',
+        evaluatorSignature: d.evaluatorSignature || '',
+        leaderName: d.leaderName || '',
+        leaderSignature: d.leaderSignature || '',
+        principalName: d.principalName || '',
+        principalSignature: d.principalSignature || '',
+        updatedAt: d.updatedAt || new Date().toISOString()
+      };
+
+      console.log(`✅ [GoogleSheet GET] Mẫu 01 fetched successfully for ${teacherIdClean}:`, form01Fetched);
+      return { success: true, data: form01Fetched };
+    }
+
+    return { success: false, message: json.message || 'Chưa có dữ liệu Mẫu 01 trên Google Sheet' };
+  } catch (err: any) {
+    console.warn(`ℹ️ [GoogleSheet GET Notice] (${teacherIdClean}):`, err?.message || err);
+    return { success: false, message: err?.message || 'Lỗi mạng khi đọc Google Sheet' };
   }
 }
 

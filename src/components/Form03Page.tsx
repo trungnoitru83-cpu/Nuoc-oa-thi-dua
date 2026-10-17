@@ -288,11 +288,14 @@ export const Form03Page: React.FC<Form03PageProps> = ({
     onSaveEvaluation(updatedEval);
     if (newStatus) setStatus(newStatus);
 
-    const defaultMsg = finalStatus === 'approved' 
-      ? `✅ Đã cập nhật điểm Hiệu trưởng đánh giá (${grandTotal_Principal} điểm) và lưu trực tiếp lên Google Sheet [${val.payload?.maChamDiem}]!`
-      : `✅ Đã cập nhật điểm Giáo viên tự chấm (${grandTotal_Teacher} điểm) và lưu trực tiếp lên Google Sheet [${val.payload?.maChamDiem}]!`;
+    if (finalStatus === 'approved') {
+      alert('Đã cập nhật trạng thái [Đã duyệt] chính thức vào Google Sheet thành công!');
+    } else {
+      const defaultMsg = customMsg || `✅ Đã cập nhật điểm Giáo viên tự chấm (${grandTotal_Teacher} điểm) và lưu trực tiếp lên Google Sheet [${val.payload?.maChamDiem}]!`;
+      alert(defaultMsg);
+    }
 
-    setSaveToastMsg(customMsg || defaultMsg);
+    setSaveToastMsg(finalStatus === 'approved' ? 'Đã cập nhật trạng thái [Đã duyệt] chính thức vào Google Sheet thành công!' : (customMsg || `✅ Đã cập nhật điểm Giáo viên tự chấm (${grandTotal_Teacher} điểm)!`));
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 4500);
   };

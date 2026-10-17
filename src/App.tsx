@@ -390,6 +390,7 @@ export default function App() {
 
         {currentUser && activeTab === 'profile' && (
           <TeacherProfilePage
+            currentUser={currentUser}
             teachers={teachers}
             teacher={selectedTeacher}
             form01={currentForm01}
