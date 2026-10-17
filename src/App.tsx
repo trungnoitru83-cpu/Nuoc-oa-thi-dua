@@ -132,9 +132,17 @@ export default function App() {
           changed = true;
         } else {
           const current = map.get(key)!;
-          // Update official name if changed in INITIAL_TEACHERS
-          if (current.fullName !== initT.fullName && !current.fullName.includes('Mới')) {
-            list.push({ ...current, fullName: initT.fullName });
+          // Update official name, email, and position if changed in INITIAL_TEACHERS
+          const nameChanged = current.fullName !== initT.fullName && !current.fullName.includes('Mới');
+          const emailChanged = current.email !== initT.email;
+          const posChanged = current.position !== initT.position;
+          if (nameChanged || emailChanged || posChanged) {
+            list.push({
+              ...current,
+              fullName: nameChanged ? initT.fullName : current.fullName,
+              email: initT.email,
+              position: initT.position
+            });
             changed = true;
           } else {
             list.push(current);
@@ -402,6 +410,7 @@ export default function App() {
             onUpdateTeacher={handleUpdateTeacher}
             onUpdateForm01={handleUpdateForm01}
             onNavigateToForm03={() => setActiveTab('evaluation')}
+            onNavigateToSummary={() => setActiveTab('summary')}
           />
         )}
 

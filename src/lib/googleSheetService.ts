@@ -5,7 +5,7 @@ export const GOOGLE_APPS_SCRIPT_LIBRARY_URL =
   'https://script.google.com/macros/library/d/16GMDqaJn8KTH5-kRVQ0vRpnO_ZmkY9P6mGR3WoZy38XU7RF4q0D2oM0v/2';
 
 export const DEFAULT_GOOGLE_SHEET_API_URL =
-  'https://script.google.com/macros/s/AKfycbxJ6W8LVbLONmyqMK1xIXIKTF3ewcLHvmuTvLMxn6qYItk8SWHarDZxVn454euN0G3W/exec';
+  'https://script.google.com/macros/s/AKfycbxTxIiN9rWixvesYhuOBIP0GKgx7B10PtbaJfWSiGwvzTDdG4BU9WTID69e9D45kDqF/exec';
 
 /**
  * Get configured Google Apps Script Web App URL.

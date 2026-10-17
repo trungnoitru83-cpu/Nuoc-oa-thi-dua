@@ -71,6 +71,8 @@ export interface Form01Data {
   leaderSignature?: string; // Data URL / URL Chữ ký PHT / TTCM
   principalName?: string; // Họ và tên Hiệu trưởng
   principalSignature?: string; // Data URL / URL Chữ ký Hiệu trưởng
+  isUpdated?: boolean; // Đánh dấu đã cập nhật theo thời gian thực
+  isSubmitted?: boolean; // Đánh dấu đã nộp
 }
 
 export interface BenchmarkTier {
@@ -132,6 +134,7 @@ export interface Form03Evaluation {
   
   status: 'draft' | 'submitted' | 'approved' | 'rejected';
   principalComment?: string;
+  isUpdated?: boolean; // Đánh dấu đã cập nhật theo thời gian thực
   updatedAt: string;
 }
 

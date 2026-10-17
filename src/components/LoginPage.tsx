@@ -463,38 +463,25 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       <div className="bg-theme-gradient text-white rounded-3xl p-6 sm:p-8 shadow-xl mb-8 border border-white/20 relative overflow-hidden text-center sm:text-left">
         <div className="absolute -right-10 -top-10 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-6 relative z-10">
-          <div>
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
-              <span className="px-3 py-1 text-xs font-black bg-white/20 text-white rounded-full border border-white/30 backdrop-blur-xs">
-                TRANG 1: ĐĂNG NHẬP XÁC THỰC
-              </span>
-              <span className="px-3 py-1 text-xs font-black bg-emerald-500/30 text-emerald-200 rounded-full border border-emerald-400/40 flex items-center gap-1">
-                <Shield className="w-3.5 h-3.5" />
-                ADMIN: trungnoitru83@gmail.com
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              Phần Mềm Chấm Thi Đua Hàng Tháng
-            </h1>
-            <p className="text-xs sm:text-sm text-white/90 max-w-xl mt-1 font-medium">
-              Đăng nhập bằng <strong>Mã Thi Đua</strong>, Email cán bộ hoặc tài khoản Quản trị viên.
-            </p>
-          </div>
-
-          {/* Button to open hidden 36 Emulation Codes Directory (Admin Only) */}
-          <button
-            type="button"
-            onClick={handleOpen36CodesModal}
-            className="flex items-center gap-2.5 px-5 py-3 bg-white text-slate-900 dark:bg-slate-800 dark:text-white hover:bg-slate-100 font-black text-xs rounded-2xl shadow-lg border border-white/40 transition shrink-0 cursor-pointer active:scale-95"
-          >
-            <ListOrdered className="w-5 h-5 text-amber-500" />
-            <div className="text-left">
-              <p className="text-[10px] font-extrabold uppercase text-slate-500 dark:text-slate-400">Danh mục 36 mã</p>
-              <p className="text-xs font-black text-slate-900 dark:text-white">Xem Danh Sách &amp; Thêm Mới</p>
-            </div>
-          </button>
+        <div className="relative z-10 pr-0 sm:pr-44">
+          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+            Phần Mềm Chấm Thi Đua Hàng Tháng
+          </h1>
+          <p className="text-xs sm:text-sm text-white/90 max-w-xl mt-1 font-medium">
+            Đăng nhập bằng <strong>Mã Thi Đua</strong>, Email cán bộ hoặc tài khoản được phân quyền.
+          </p>
         </div>
+
+        {/* Nút Xem danh sách và thêm mới thu gọn nhỏ lại xuống góc bên phải của khung */}
+        <button
+          type="button"
+          onClick={handleOpen36CodesModal}
+          className="absolute bottom-2.5 right-2.5 sm:bottom-3.5 sm:right-4 z-20 flex items-center gap-1 px-2.5 py-1 bg-white/95 hover:bg-white text-slate-800 dark:bg-slate-800 dark:text-white font-bold text-[10px] sm:text-[11px] rounded-lg shadow-sm border border-white/40 transition shrink-0 cursor-pointer active:scale-95 hover:shadow"
+          title="Danh mục mã thi đua - Xem danh sách & thêm mới"
+        >
+          <ListOrdered className="w-3 h-3 text-amber-500 shrink-0" />
+          <span>Xem danh sách &amp; thêm mới</span>
+        </button>
       </div>
 
       {/* Main Streamlined Login Form Card */}
@@ -666,8 +653,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           </button>
         </form>
 
-        <p className="text-[11px] text-center text-slate-500 dark:text-slate-400 mt-6 font-bold">
-          📧 Mọi thay đổi Tên đăng nhập &amp; Mật khẩu đều báo trực tiếp tới Gmail: <strong className="text-slate-900 dark:text-white font-mono">{ADMIN_EMAIL}</strong>
+        <p className="text-[11px] text-center text-slate-500 dark:text-slate-400 mt-6 font-medium">
+          🔒 Hệ thống bảo mật thông tin đăng nhập và lưu trữ hồ sơ thi đua an toàn.
         </p>
 
       </div>
@@ -693,7 +680,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   Xác Thực Quyền Quản Trị Viên
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                  Quản trị viên (<strong className="text-rose-700 dark:text-rose-400">{ADMIN_EMAIL}</strong> &amp; <strong className="text-rose-700 dark:text-rose-400">Nguyễn Xuân Ảnh - {PRINCIPAL_ADMIN_EMAIL}</strong>) mới được xem Danh mục 36 mã thi đua và Bổ sung viên chức mới.
+                  Tính năng quản lý danh mục mã thi đua và bổ sung viên chức mới yêu cầu xác thực mật khẩu Quản trị viên.
                 </p>
               </div>
             </div>
@@ -708,13 +695,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             <form onSubmit={handleVerifyAdminAuth} className="space-y-4">
               <div>
                 <label className="block text-xs font-black text-slate-900 dark:text-slate-100 mb-1">
-                  Mật khẩu Quản trị viên (trungnoitru83@gmail.com / anh.nguyen@nuocoa.edu.vn)
+                  Mật khẩu Quản trị viên
                 </label>
                 <input
                   type="password"
                   value={adminPassInput}
                   onChange={(e) => setAdminPassInput(e.target.value)}
-                  placeholder="Nhập mật khẩu Admin (Mặc định: 123456)"
+                  placeholder="Nhập mật khẩu Quản trị viên (Mặc định: 123456)"
                   className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold"
                 />
               </div>
@@ -757,7 +744,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   </h3>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Đã xác thực Quản trị viên: <strong>{ADMIN_EMAIL}</strong>
+                  Đã xác thực quyền Quản trị viên hệ thống
                 </p>
               </div>
 
@@ -912,7 +899,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
             <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
               <span>Tổng số: <strong>{filteredTeachers.length}</strong> cán bộ viên chức</span>
-              <span className="font-mono text-emerald-600 dark:text-emerald-400">Mail báo: {ADMIN_EMAIL}</span>
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400">🔒 Dữ liệu được bảo mật</span>
             </div>
 
           </div>
@@ -944,7 +931,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   Đổi Mật Khẩu Đăng Nhập
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                  Mọi thay đổi đều được báo trực tiếp về Gmail <strong>{ADMIN_EMAIL}</strong>
+                  Hệ thống tự động ghi nhận và bảo vệ tài khoản của bạn
                 </p>
               </div>
             </div>
@@ -1039,7 +1026,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
                 <div className="p-3 bg-amber-50 dark:bg-amber-950/60 rounded-xl text-[11px] text-amber-900 dark:text-amber-200 border border-amber-300 font-bold flex items-center gap-2">
                   <MailCheck className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Mật khẩu mới đổi sẽ được gửi báo cáo trực tiếp về Gmail Quản trị viên: <strong>{ADMIN_EMAIL}</strong></span>
+                  <span>Mật khẩu mới đổi được lưu an toàn và mã hóa trên hệ thống cơ sở dữ liệu.</span>
                 </div>
 
                 <div className="flex items-center justify-end gap-2 pt-2">
@@ -1118,7 +1105,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       setGoogleEmailInput(e.target.value);
                       setGoogleModalError('');
                     }}
-                    placeholder="trungnoitru83@gmail.com"
+                    placeholder="canbo@nuocoa.edu.vn"
                     className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-bold"
                   />
                 </div>

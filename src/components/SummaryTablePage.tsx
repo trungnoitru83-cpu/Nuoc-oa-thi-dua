@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { Award, Search, Filter, Printer, Download, UserPlus, Eye, FileSpreadsheet, CheckCircle, AlertTriangle, ShieldCheck, HelpCircle, FileText, Check, RefreshCw, CloudCheck, ShieldAlert, Clock, XCircle, UserCheck } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Award, Search, Filter, Printer, Download, UserPlus, Eye, FileSpreadsheet, CheckCircle, AlertTriangle, ShieldCheck, HelpCircle, FileText, Check, RefreshCw, CloudCheck, ShieldAlert, Clock, XCircle, UserCheck, Bell, Sparkles } from 'lucide-react';
 import { Teacher, Form03Evaluation, Form01Data, ClassificationType, Role, EntryStatusData } from '../types';
 import { CLASSIFICATION_RULES, getClassificationLabel, getClassification, isLeaderTeacher } from '../data/form03Criteria';
 import { getTeacherEmulationCode } from '../data/mockTeachers';
 import { exportToWord } from '../lib/wordExport';
 import { syncAllTeachersToGoogleSheet } from '../lib/googleSheetService';
+import { canViewSummary, getAuthorizedManager } from '../lib/authorizedManagers';
+import { calculateProgressStats, ProgressStatistics, TeacherProgressStatus } from '../utils/updateProgressHelper';
+import { RealtimeUpdateStatusModal } from './RealtimeUpdateStatusModal';
 
 interface SummaryTablePageProps {
   currentUser?: Teacher | null;
@@ -38,8 +41,24 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState<string>('ALL');
   const [classificationFilter, setClassificationFilter] = useState<string>('ALL');
+  const [updateProgressFilter, setUpdateProgressFilter] = useState<'ALL' | 'UPDATED_ANY' | 'UPDATED_M01' | 'UPDATED_M02' | 'UPDATED_M03' | 'NOT_UPDATED'>('ALL');
+  const [isUpdateStatusModalOpen, setIsUpdateStatusModalOpen] = useState(false);
   const [isSyncingGoogleSheet, setIsSyncingGoogleSheet] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  // Tính toán tiến độ cập nhật Mẫu 01, Mẫu 02, Mẫu 03 theo thời gian thực (Real-time)
+  const progressStats = useMemo(() => {
+    return calculateProgressStats(teachers, evaluations, form01DataMap, selectedMonth, selectedYear);
+  }, [teachers, evaluations, form01DataMap, selectedMonth, selectedYear]);
+
+  // Map nhanh tiến độ theo teacherId
+  const progressMap = useMemo(() => {
+    const map: Record<string, TeacherProgressStatus> = {};
+    progressStats.items.forEach(it => {
+      map[it.teacherId] = it;
+    });
+    return map;
+  }, [progressStats]);
 
   // Helper to fetch monthly evaluation for a teacher
   const getEval = (teacherId: string): Form03Evaluation | undefined => {
@@ -107,7 +126,15 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
     const cls = getClassification(score);
     const matchesClass = classificationFilter === 'ALL' || cls === classificationFilter;
 
-    return matchesSearch && matchesDept && matchesClass;
+    const prog = progressMap[t.id];
+    let matchesProgress = true;
+    if (updateProgressFilter === 'UPDATED_ANY') matchesProgress = prog?.updatedAny ?? false;
+    else if (updateProgressFilter === 'UPDATED_M01') matchesProgress = prog?.form01Updated ?? false;
+    else if (updateProgressFilter === 'UPDATED_M02') matchesProgress = prog?.form02Updated ?? false;
+    else if (updateProgressFilter === 'UPDATED_M03') matchesProgress = prog?.form03Updated ?? false;
+    else if (updateProgressFilter === 'NOT_UPDATED') matchesProgress = !(prog?.updatedAny ?? false);
+
+    return matchesSearch && matchesDept && matchesClass && matchesProgress;
   });
 
   // Calculate statistics across all teachers
@@ -216,29 +243,21 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
     exportToWord(html, `Bang_Tong_Hop_Thi_Dua_36_GV_Thang_${selectedMonth}_${selectedYear}`);
   };
 
-  // Check Admin permission
-  const isAdmin =
-    currentUser?.isAdmin === true ||
-    currentUser?.email === 'trungnoitru83@gmail.com' ||
-    currentUser?.email === 'anh.nguyen@nuocoa.edu.vn' ||
-    currentUser?.emulationCode === 'TĐ0001' ||
-    currentUser?.role === 'admin' ||
-    currentRole === 'admin' ||
-    currentRole === 'principal' ||
-    Boolean(currentUser?.position?.toLowerCase().includes('hiệu trưởng')) ||
-    Boolean(currentUser?.position?.toLowerCase().includes('quản trị'));
+  // Check permission to view Summary (Admins, BGH, TTCM, and Authorized Managers)
+  const isAuthorized = canViewSummary(currentUser, currentRole);
+  const authManager = getAuthorizedManager(currentUser);
 
-  if (!isAdmin) {
+  if (!isAuthorized) {
     return (
       <div className="max-w-4xl mx-auto my-12 p-8 sm:p-12 bg-white dark:bg-slate-900 rounded-3xl border-2 border-amber-300 dark:border-amber-700 shadow-xl text-center">
         <div className="w-20 h-20 bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm ring-8 ring-amber-50 dark:ring-amber-950/40">
           <ShieldAlert className="w-10 h-10" />
         </div>
         <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mb-3 tracking-tight">
-          Quyền Truy Cập Bị Hạn Chế (Chỉ Admin)
+          Quyền Truy Cập Bị Hạn Chế
         </h2>
         <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 max-w-xl mx-auto mb-8 font-medium leading-relaxed">
-          Trang <strong className="text-slate-900 dark:text-white">File Bảng Tổng Hợp</strong> chỉ dành riêng cho <strong className="text-amber-600 dark:text-amber-400">Quản trị viên (Admin) / Ban Giám Hiệu</strong>. Tài khoản của bạn (<span className="font-bold text-blue-600 dark:text-blue-400">{currentUser?.fullName || currentUser?.email || 'Viên chức'}</span>) không có quyền xem thông tin file tổng hợp thi đua.
+          Trang <strong className="text-slate-900 dark:text-white">File Bảng Tổng Hợp</strong> chỉ dành riêng cho <strong className="text-amber-600 dark:text-amber-400">Ban Giám Hiệu, Tổ trưởng chuyên môn và Cán bộ được phân quyền</strong>. Tài khoản của bạn (<span className="font-bold text-blue-600 dark:text-blue-400">{currentUser?.fullName || currentUser?.email || 'Viên chức'}</span>) hiện chưa được cấp quyền xem bảng tổng hợp thi đua.
         </p>
         <div className="flex flex-wrap justify-center items-center gap-3">
           <button
@@ -266,13 +285,19 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
       {/* Title & Top Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
         <div>
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="px-3 py-1 text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 rounded-full">
               BẢNG TỔNG HỢP THI ĐUA TOÀN TRƯỜNG
             </span>
             <span className="text-xs text-slate-500 font-semibold">
               Tháng {selectedMonth}/{selectedYear}
             </span>
+            {authManager && (
+              <span className="px-2.5 py-0.5 text-[11px] font-black bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 rounded-full border border-amber-300 dark:border-amber-700 flex items-center gap-1 shadow-xs">
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+                <span>Quyền xem &amp; ký duyệt: {authManager.fullName} ({authManager.signatureTitle})</span>
+              </span>
+            )}
           </div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-white">
             Bảng Tổng Hợp Xếp Loại Thi Đua {teachers.length} Cán Bộ Giáo Viên
@@ -284,6 +309,22 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
 
         {/* Top Actions */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Nút Thông Báo Tiến Độ Cập Nhật Thời Gian Thực (Mẫu 01, 02, 03) */}
+          <button
+            onClick={() => setIsUpdateStatusModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-800 hover:from-blue-800 hover:to-purple-900 text-white font-black text-xs rounded-2xl shadow-md hover:shadow-lg transition cursor-pointer ring-4 ring-indigo-500/20 active:scale-95"
+            title="Nhấn để xem chi tiết danh sách viên chức đã cập nhật Mẫu 01, Mẫu 02 hoặc Mẫu 03 theo thời gian thực"
+          >
+            <span className="relative flex h-3 w-3 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-400"></span>
+            </span>
+            <Bell className="w-4 h-4 text-amber-300 animate-pulse shrink-0" />
+            <span>
+              Thông báo: <strong className="text-amber-200">{progressStats.totalUpdatedAny}/{teachers.length}</strong> đã cập nhật (01/02/03)
+            </span>
+          </button>
+
           {/* Cloud Auto-Save Indicator */}
           <div className="flex items-center gap-2 px-3.5 py-2.5 bg-emerald-100 dark:bg-emerald-950/80 border-2 border-emerald-500 text-emerald-950 dark:text-emerald-100 text-xs font-black rounded-2xl shadow-xs">
             <CloudCheck className="w-4 h-4 text-emerald-700 dark:text-emerald-300 shrink-0" />
@@ -429,6 +470,209 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
           </div>
         </div>
       )}
+
+      {/* Real-time Tracking Widget for Mẫu 01, Mẫu 02 & Mẫu 03 */}
+      <div className="mb-6 p-5 sm:p-6 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl shadow-xl border border-indigo-500/30">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-indigo-800/60">
+          <div className="flex items-center gap-3.5">
+            <div className="p-3 bg-indigo-500/20 text-amber-300 rounded-2xl border border-indigo-400/30 shadow-inner shrink-0">
+              <Bell className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-0.5 bg-emerald-500/30 border border-emerald-400/50 text-emerald-300 text-[11px] font-black rounded-full uppercase flex items-center gap-1.5 shadow-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                  ĐỒNG BỘ THỜI GIAN THỰC (REAL-TIME)
+                </span>
+                <span className="text-xs text-indigo-300 font-bold">
+                  Tháng {selectedMonth}/{selectedYear}
+                </span>
+              </div>
+              <h3 className="text-base sm:text-lg font-black text-white mt-1 flex items-center gap-2">
+                <span>Tiến Độ Cập Nhật Mẫu 01, Mẫu 02 &amp; Mẫu 03 Toàn Trường</span>
+              </h3>
+              <p className="text-xs text-indigo-200/80 mt-0.5">
+                Tự động thống kê số lượng cán bộ giáo viên đã nộp hồ sơ Mẫu 01 hoặc nộp phiếu chấm Mẫu 02/03 theo thời gian thực.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              onClick={() => setIsUpdateStatusModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl shadow-md transition cursor-pointer"
+            >
+              <Eye className="w-4 h-4 text-amber-300" />
+              <span>Xem danh sách chi tiết</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 4 Stat Boxes inside Real-time Widget */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+          <div 
+            onClick={() => setUpdateProgressFilter(updateProgressFilter === 'UPDATED_ANY' ? 'ALL' : 'UPDATED_ANY')}
+            className={`p-3.5 rounded-2xl border transition cursor-pointer ${
+              updateProgressFilter === 'UPDATED_ANY'
+                ? 'bg-indigo-600 text-white border-indigo-400 ring-2 ring-indigo-300 shadow-md'
+                : 'bg-white/10 hover:bg-white/15 border-white/10 text-white'
+            }`}
+          >
+            <p className="text-[10px] text-indigo-200 font-bold uppercase flex items-center justify-between">
+              <span>Đã cập nhật (01/02/03)</span>
+              <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+            </p>
+            <p className="text-2xl font-black mt-1">
+              {progressStats.totalUpdatedAny} <span className="text-xs text-indigo-300 font-medium">/ {teachers.length}</span>
+            </p>
+            <p className="text-[10px] text-emerald-300 font-bold mt-0.5">
+              {progressStats.percentAny}% viên chức đã nộp
+            </p>
+          </div>
+
+          <div 
+            onClick={() => setUpdateProgressFilter(updateProgressFilter === 'UPDATED_M01' ? 'ALL' : 'UPDATED_M01')}
+            className={`p-3.5 rounded-2xl border transition cursor-pointer ${
+              updateProgressFilter === 'UPDATED_M01'
+                ? 'bg-blue-600 text-white border-blue-400 ring-2 ring-blue-300 shadow-md'
+                : 'bg-white/10 hover:bg-white/15 border-white/10 text-white'
+            }`}
+          >
+            <p className="text-[10px] text-indigo-200 font-bold uppercase flex items-center justify-between">
+              <span>Đã nộp Mẫu 01</span>
+              <span className="text-[10px] font-mono text-cyan-300">M01</span>
+            </p>
+            <p className="text-2xl font-black mt-1">
+              {progressStats.totalUpdated01} <span className="text-xs text-indigo-300 font-medium">/ {teachers.length}</span>
+            </p>
+            <p className="text-[10px] text-cyan-300 font-bold mt-0.5">
+              {progressStats.percent01}% hồ sơ & minh chứng
+            </p>
+          </div>
+
+          <div 
+            onClick={() => setUpdateProgressFilter(updateProgressFilter === 'UPDATED_M02' ? 'ALL' : 'UPDATED_M02')}
+            className={`p-3.5 rounded-2xl border transition cursor-pointer ${
+              updateProgressFilter === 'UPDATED_M02'
+                ? 'bg-amber-600 text-white border-amber-400 ring-2 ring-amber-300 shadow-md'
+                : 'bg-white/10 hover:bg-white/15 border-white/10 text-white'
+            }`}
+          >
+            <p className="text-[10px] text-indigo-200 font-bold uppercase flex items-center justify-between">
+              <span>Đã nộp Mẫu 02 (CBQL)</span>
+              <span className="text-[10px] font-mono text-amber-300">CBQL</span>
+            </p>
+            <p className="text-2xl font-black mt-1">
+              {progressStats.totalUpdated02} <span className="text-xs text-indigo-300 font-medium">/ {progressStats.totalLeaders}</span>
+            </p>
+            <p className="text-[10px] text-amber-300 font-bold mt-0.5">
+              {progressStats.percent02}% cán bộ quản lý
+            </p>
+          </div>
+
+          <div 
+            onClick={() => setUpdateProgressFilter(updateProgressFilter === 'UPDATED_M03' ? 'ALL' : 'UPDATED_M03')}
+            className={`p-3.5 rounded-2xl border transition cursor-pointer ${
+              updateProgressFilter === 'UPDATED_M03'
+                ? 'bg-emerald-600 text-white border-emerald-400 ring-2 ring-emerald-300 shadow-md'
+                : 'bg-white/10 hover:bg-white/15 border-white/10 text-white'
+            }`}
+          >
+            <p className="text-[10px] text-indigo-200 font-bold uppercase flex items-center justify-between">
+              <span>Đã nộp Mẫu 03 (GV, NV)</span>
+              <span className="text-[10px] font-mono text-emerald-300">GV/NV</span>
+            </p>
+            <p className="text-2xl font-black mt-1">
+              {progressStats.totalUpdated03} <span className="text-xs text-indigo-300 font-medium">/ {progressStats.totalNonLeaders}</span>
+            </p>
+            <p className="text-[10px] text-emerald-300 font-bold mt-0.5">
+              {progressStats.percent03}% giáo viên, nhân viên
+            </p>
+          </div>
+        </div>
+
+        {/* Quick Filter Bar for table */}
+        <div className="flex items-center gap-2 mt-4 pt-3 border-t border-indigo-800/50 flex-wrap">
+          <span className="text-xs text-indigo-200 font-bold">Lọc nhanh danh sách bảng:</span>
+          
+          <button
+            onClick={() => setUpdateProgressFilter('ALL')}
+            className={`px-3 py-1 rounded-xl text-xs font-black transition cursor-pointer ${
+              updateProgressFilter === 'ALL'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'bg-white/10 text-indigo-200 hover:bg-white/20'
+            }`}
+          >
+            Tất cả ({teachers.length})
+          </button>
+
+          <button
+            onClick={() => setUpdateProgressFilter('UPDATED_ANY')}
+            className={`px-3 py-1 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1 ${
+              updateProgressFilter === 'UPDATED_ANY'
+                ? 'bg-emerald-500 text-white shadow-xs'
+                : 'bg-white/10 text-emerald-300 hover:bg-white/20'
+            }`}
+          >
+            <CheckCircle className="w-3.5 h-3.5" />
+            <span>Đã cập nhật (01/02/03) ({progressStats.totalUpdatedAny})</span>
+          </button>
+
+          <button
+            onClick={() => setUpdateProgressFilter('UPDATED_M01')}
+            className={`px-3 py-1 rounded-xl text-xs font-black transition cursor-pointer ${
+              updateProgressFilter === 'UPDATED_M01'
+                ? 'bg-cyan-500 text-white shadow-xs'
+                : 'bg-white/10 text-cyan-300 hover:bg-white/20'
+            }`}
+          >
+            Đã nộp Mẫu 01 ({progressStats.totalUpdated01})
+          </button>
+
+          <button
+            onClick={() => setUpdateProgressFilter('UPDATED_M02')}
+            className={`px-3 py-1 rounded-xl text-xs font-black transition cursor-pointer ${
+              updateProgressFilter === 'UPDATED_M02'
+                ? 'bg-amber-500 text-white shadow-xs'
+                : 'bg-white/10 text-amber-300 hover:bg-white/20'
+            }`}
+          >
+            Đã nộp Mẫu 02 ({progressStats.totalUpdated02})
+          </button>
+
+          <button
+            onClick={() => setUpdateProgressFilter('UPDATED_M03')}
+            className={`px-3 py-1 rounded-xl text-xs font-black transition cursor-pointer ${
+              updateProgressFilter === 'UPDATED_M03'
+                ? 'bg-emerald-500 text-white shadow-xs'
+                : 'bg-white/10 text-emerald-300 hover:bg-white/20'
+            }`}
+          >
+            Đã nộp Mẫu 03 ({progressStats.totalUpdated03})
+          </button>
+
+          <button
+            onClick={() => setUpdateProgressFilter('NOT_UPDATED')}
+            className={`px-3 py-1 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1 ${
+              updateProgressFilter === 'NOT_UPDATED'
+                ? 'bg-rose-500 text-white shadow-xs'
+                : 'bg-white/10 text-rose-300 hover:bg-white/20'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>Chưa cập nhật ({progressStats.totalNotUpdated})</span>
+          </button>
+
+          {updateProgressFilter !== 'ALL' && (
+            <button
+              onClick={() => setUpdateProgressFilter('ALL')}
+              className="text-xs text-rose-300 underline hover:text-white ml-auto cursor-pointer"
+            >
+              Xóa bộ lọc tiến độ
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* 4 Classification Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
@@ -583,6 +827,9 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
                 <th className="p-3.5 min-w-[90px]">Ngày sinh</th>
                 <th className="p-3.5 min-w-[110px]">Bộ môn</th>
                 <th className="p-3.5 min-w-[120px]">Tổ chuyên môn</th>
+                <th className="p-3.5 min-w-[130px] text-center bg-indigo-50/90 dark:bg-indigo-950/80 text-indigo-900 dark:text-indigo-200 border-x border-indigo-200 dark:border-indigo-800">
+                  Tiến độ (01, 02/03)
+                </th>
                 <th className="p-3.5 text-center bg-cyan-50/90 dark:bg-cyan-950/80 text-cyan-900 dark:text-cyan-200 border-x border-cyan-200 dark:border-cyan-800">
                   Điểm GV, NV tự chấm
                 </th>
@@ -609,7 +856,7 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {filteredTeachers.length === 0 ? (
                 <tr>
-                  <td colSpan={15} className="p-8 text-center text-slate-400 font-semibold">
+                  <td colSpan={16} className="p-8 text-center text-slate-400 font-semibold">
                     Không tìm thấy cán bộ giáo viên thỏa mãn điều kiện lọc.
                   </td>
                 </tr>
@@ -680,6 +927,31 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
 
                       <td className="p-3 font-medium text-slate-700 dark:text-slate-300">
                         {t.department}
+                      </td>
+
+                      {/* Tiến độ Mẫu 01, Mẫu 02/03 theo thời gian thực */}
+                      <td className="p-2.5 text-center bg-indigo-50/30 dark:bg-indigo-950/30 border-x border-indigo-200/50 dark:border-indigo-800/50">
+                        <div className="flex flex-col gap-1 items-center justify-center">
+                          {/* Mẫu 01 badge */}
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black ${
+                            progressMap[t.id]?.form01Updated
+                              ? 'bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-300 border border-blue-300 dark:border-blue-700'
+                              : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
+                          }`}>
+                            {progressMap[t.id]?.form01Updated ? <CheckCircle className="w-3 h-3 text-blue-600 dark:text-blue-400" /> : <Clock className="w-3 h-3 text-slate-400" />}
+                            <span>{progressMap[t.id]?.form01Updated ? 'M01: Đã nộp' : 'M01: Chưa'}</span>
+                          </span>
+
+                          {/* Mẫu 02 or Mẫu 03 badge */}
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black ${
+                            progressMap[t.id]?.evalUpdated
+                              ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                              : 'bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                          }`}>
+                            {progressMap[t.id]?.evalUpdated ? <CheckCircle className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> : <Clock className="w-3 h-3 text-amber-500" />}
+                            <span>{isLeaderTeacher(t) ? 'M02' : 'M03'}: {progressMap[t.id]?.evalUpdated ? 'Đã chấm' : 'Chưa'}</span>
+                          </span>
+                        </div>
                       </td>
 
                       {/* Điểm Giáo viên, Nhân viên tự chấm */}
@@ -763,6 +1035,19 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
           <span>Cập nhật mới nhất: Tháng {selectedMonth}/2026 (Tự động lưu file Tháng {selectedMonth} trên Google Sheet)</span>
         </div>
       </div>
+
+      {/* Modal Báo Cáo Tiến Độ Cập Nhật Mẫu 01, Mẫu 02, Mẫu 03 (Thời Gian Thực) */}
+      <RealtimeUpdateStatusModal
+        isOpen={isUpdateStatusModalOpen}
+        onClose={() => setIsUpdateStatusModalOpen(false)}
+        stats={progressStats}
+        selectedMonth={selectedMonth}
+        selectedYear={selectedYear}
+        onSelectTeacherForView={onSelectTeacherForView}
+        onApplyFilterToTable={(filterType) => {
+          setUpdateProgressFilter(filterType as any);
+        }}
+      />
 
     </div>
   );

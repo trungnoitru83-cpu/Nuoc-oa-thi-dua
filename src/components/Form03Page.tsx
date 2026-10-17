@@ -119,6 +119,9 @@ export const Form03Page: React.FC<Form03PageProps> = ({
 
   const [saveToast, setSaveToast] = useState(false);
   const [saveToastMsg, setSaveToastMsg] = useState('');
+  const [lastUpdated, setLastUpdated] = useState<'teacher' | 'principal' | null>(
+    evaluation.status === 'approved' ? 'principal' : evaluation.status === 'submitted' ? 'teacher' : null
+  );
 
   // Sync state if current teacher or evaluation changes
   React.useEffect(() => {
@@ -127,6 +130,7 @@ export const Form03Page: React.FC<Form03PageProps> = ({
     setStatus(evaluation.status || 'submitted');
     setTeacherSigImg(evaluation.teacherSignatureImg);
     setPrincipalSigImg(evaluation.principalSignatureImg);
+    setLastUpdated(evaluation.status === 'approved' ? 'principal' : evaluation.status === 'submitted' ? 'teacher' : null);
   }, [evaluation, currentTeacher.id]);
 
   // Handle Score Change with safe parseFloat conversion
@@ -275,6 +279,7 @@ export const Form03Page: React.FC<Form03PageProps> = ({
       principalSignatureDate: principalSigImg ? (evaluation.principalSignatureDate || `30/${formattedMonth}/${selectedYear}`) : undefined,
       status: finalStatus,
       principalComment,
+      isUpdated: true,
       updatedAt: new Date().toISOString()
     };
 
@@ -289,15 +294,17 @@ export const Form03Page: React.FC<Form03PageProps> = ({
     if (newStatus) setStatus(newStatus);
 
     if (finalStatus === 'approved') {
+      setLastUpdated('principal');
       alert('Đã cập nhật trạng thái [Đã duyệt] chính thức vào Google Sheet thành công!');
     } else {
+      setLastUpdated('teacher');
       const defaultMsg = customMsg || `✅ Đã cập nhật điểm Giáo viên tự chấm (${grandTotal_Teacher} điểm) và lưu trực tiếp lên Google Sheet [${val.payload?.maChamDiem}]!`;
       alert(defaultMsg);
     }
 
     setSaveToastMsg(finalStatus === 'approved' ? 'Đã cập nhật trạng thái [Đã duyệt] chính thức vào Google Sheet thành công!' : (customMsg || `✅ Đã cập nhật điểm Giáo viên tự chấm (${grandTotal_Teacher} điểm)!`));
     setSaveToast(true);
-    setTimeout(() => setSaveToast(false), 4500);
+    setTimeout(() => setSaveToast(false), 5000);
   };
 
   // Teacher navigation indexing
@@ -1110,15 +1117,26 @@ export const Form03Page: React.FC<Form03PageProps> = ({
           </table>
         </div>
 
-        {/* NÚT CẬP NHẬT ĐIỂM TỰ ĐÁNH GIÁ CỦA GIÁO VIÊN VÀ HIỆU TRƯỞNG BÊN DƯỚI TỔNG ĐIỂM */}
-        <div className="p-5 bg-gradient-to-r from-blue-900/15 via-slate-100 to-amber-900/15 dark:from-blue-950/50 dark:via-slate-800 dark:to-amber-950/50 border-t-2 border-b-2 border-slate-300 dark:border-slate-700 flex flex-col lg:flex-row items-center justify-between gap-4 my-1">
+        {/* NÚT CẬP NHẬT ĐIỂM TỰ ĐÁNH GIÁ CỦA GIÁO VIÊN VÀ HIỆU TRƯỜNG BÊN DƯỚI TỔNG ĐIỂM */}
+        <div className={`p-5 rounded-2xl border-2 transition-all duration-300 flex flex-col lg:flex-row items-center justify-between gap-4 my-2 ${
+          saveToast
+            ? 'bg-gradient-to-r from-blue-900/30 via-amber-900/20 to-emerald-900/30 border-amber-400 dark:border-amber-500 ring-4 ring-amber-300/60 shadow-xl shadow-amber-500/20 animate-pulse'
+            : 'bg-gradient-to-r from-blue-900/15 via-slate-100 to-amber-900/15 dark:from-blue-950/50 dark:via-slate-800 dark:to-amber-950/50 border-slate-300 dark:border-slate-700'
+        }`}>
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-slate-900 text-white rounded-2xl shadow-md shrink-0">
-              <RefreshCw className="w-5 h-5 text-amber-400" />
+            <div className={`p-3 rounded-2xl shadow-md shrink-0 transition-colors ${
+              lastUpdated === 'principal' ? 'bg-amber-600 text-white animate-bounce' : 'bg-slate-900 text-white'
+            }`}>
+              <RefreshCw className={`w-5 h-5 ${saveToast ? 'animate-spin text-amber-300' : 'text-amber-400'}`} />
             </div>
             <div>
-              <p className="text-xs font-black text-slate-950 dark:text-white uppercase tracking-wide">
-                CẬP NHẬT ĐIỂM TỰ ĐÁNH GIÁ VÀO FILE TỔNG HỢP {teachers.length} GIÁO VIÊN (THÁNG {selectedMonth}/2026)
+              <p className="text-xs font-black text-slate-950 dark:text-white uppercase tracking-wide flex items-center gap-2">
+                <span>CẬP NHẬT ĐIỂM TỰ ĐÁNH GIÁ VÀO FILE TỔNG HỢP {teachers.length} GIÁO VIÊN (THÁNG {selectedMonth}/2026)</span>
+                {saveToast && (
+                  <span className="px-2 py-0.5 text-[10px] font-black bg-emerald-500 text-white rounded-md animate-ping">
+                    ĐANG ĐỒNG BỘ...
+                  </span>
+                )}
               </p>
               <p className="text-[11px] text-slate-700 dark:text-slate-300 mt-0.5 font-medium">
                 Bấm các nút dưới đây để đồng bộ ngay lập tức điểm Tự chấm của GV (màu xanh) hoặc điểm Hiệu trưởng đánh giá (màu nâu) vào Bảng tổng hợp thi đua.
@@ -1130,19 +1148,27 @@ export const Form03Page: React.FC<Form03PageProps> = ({
             {/* Nút Cập nhật điểm Giáo viên tự chấm: MÀU XANH */}
             <button
               onClick={() => handleSave('submitted', `✅ Đã cập nhật điểm Giáo viên tự chấm (${grandTotal_Teacher} điểm) và lưu vào File tổng hợp ${teachers.length} Giáo viên!`)}
-              className="px-5 py-3 bg-blue-700 hover:bg-blue-800 text-white font-black text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
+              className={`px-5 py-3 font-black text-xs rounded-xl shadow-lg transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
+                lastUpdated === 'teacher' && saveToast
+                  ? 'bg-gradient-to-r from-blue-600 via-emerald-600 to-emerald-500 text-white ring-4 ring-emerald-300 shadow-xl shadow-emerald-500/50 scale-105 animate-pulse'
+                  : 'bg-blue-700 hover:bg-blue-800 text-white'
+              }`}
             >
               <CheckSquare className="w-4 h-4 text-amber-300 shrink-0" />
-              <span>CẬP NHẬT ĐIỂM GV TỰ CHẤM ({grandTotal_Teacher} ĐIỂM)</span>
+              <span>{lastUpdated === 'teacher' && saveToast ? '✨ ĐÃ CẬP NHẬT ĐIỂM GV TỰ CHẤM!' : `CẬP NHẬT ĐIỂM GV TỰ CHẤM (${grandTotal_Teacher} ĐIỂM)`}</span>
             </button>
 
             {/* Nút Cập nhật điểm Hiệu trưởng đánh giá: MÀU NÂU */}
             <button
               onClick={() => handleSave('approved', `✅ Đã cập nhật điểm Hiệu trưởng đánh giá (${grandTotal_Principal} điểm) và phê duyệt lưu vào File tổng hợp ${teachers.length} Giáo viên!`)}
-              className="px-5 py-3 bg-[#78350f] hover:bg-[#58260b] text-white font-black text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
+              className={`px-5 py-3 font-black text-xs rounded-xl shadow-lg transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
+                (lastUpdated === 'principal' || status === 'approved') && saveToast
+                  ? 'bg-gradient-to-r from-amber-600 via-amber-700 to-[#78350f] text-white ring-4 ring-amber-300 shadow-xl shadow-amber-500/50 scale-105 animate-pulse'
+                  : 'bg-[#78350f] hover:bg-[#58260b] text-white'
+              }`}
             >
               <ShieldCheck className="w-4 h-4 text-amber-200 shrink-0" />
-              <span>CẬP NHẬT ĐIỂM HIỆU TRƯỞNG DUYỆT ({grandTotal_Principal} ĐIỂM)</span>
+              <span>{(lastUpdated === 'principal' || status === 'approved') && saveToast ? '✨ ĐÃ CẬP NHẬT ĐIỂM HT DUYỆT!' : `CẬP NHẬT ĐIỂM HIỆU TRƯỜNG DUYỆT (${grandTotal_Principal} ĐIỂM)`}</span>
             </button>
           </div>
         </div>
@@ -1152,11 +1178,22 @@ export const Form03Page: React.FC<Form03PageProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             {/* Giáo viên tự xếp loại */}
-            <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border-2 border-blue-200 dark:border-blue-900 flex flex-col justify-between">
+            <div className={`p-4 bg-white dark:bg-slate-900 rounded-2xl border-2 transition-all duration-300 flex flex-col justify-between ${
+              lastUpdated === 'teacher'
+                ? 'border-blue-500 ring-4 ring-blue-300/80 shadow-xl shadow-blue-500/30 bg-blue-50/60 dark:bg-blue-950/40'
+                : 'border-blue-200 dark:border-blue-900'
+            }`}>
               <div>
-                <p className="text-xs font-black text-blue-900 dark:text-blue-300 uppercase mb-1">
-                  Giáo viên tự xếp loại theo Mẫu:
-                </p>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs font-black text-blue-900 dark:text-blue-300 uppercase">
+                    Giáo viên tự xếp loại theo Mẫu:
+                  </p>
+                  {lastUpdated === 'teacher' && (
+                    <span className="px-2 py-0.5 text-[10px] font-black bg-blue-600 text-white rounded-md shadow-xs animate-pulse">
+                      ✨ Mới cập nhật
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center justify-between mt-2">
                   <div>
                     <span className={`inline-block px-3 py-1 rounded-full text-xs font-black border ${
@@ -1174,19 +1211,34 @@ export const Form03Page: React.FC<Form03PageProps> = ({
               {/* Nút GV cập nhật: MÀU XANH */}
               <button
                 onClick={() => handleSave('submitted', `✅ Đã cập nhật điểm Giáo viên tự chấm (${grandTotal_Teacher} điểm) vào File tổng hợp ${teachers.length} Giáo viên!`)}
-                className="w-full mt-4 px-3 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-black text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5 cursor-pointer"
+                className={`w-full mt-4 px-3 py-2.5 font-black text-xs rounded-xl shadow transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer ${
+                  lastUpdated === 'teacher' && saveToast
+                    ? 'bg-emerald-600 text-white ring-2 ring-emerald-300 shadow-md shadow-emerald-500/40'
+                    : 'bg-blue-700 hover:bg-blue-800 text-white'
+                }`}
               >
                 <Save className="w-4 h-4 text-amber-300" />
-                <span>Cập nhật điểm GV tự chấm ({grandTotal_Teacher}đ) -&gt; File tổng hợp</span>
+                <span>{lastUpdated === 'teacher' && saveToast ? '✨ Đã lưu điểm GV tự chấm sang File tổng hợp!' : `Cập nhật điểm GV tự chấm (${grandTotal_Teacher}đ) -> File tổng hợp`}</span>
               </button>
             </div>
 
             {/* Hiệu trưởng xếp loại */}
-            <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border-2 border-amber-200 dark:border-amber-900 flex flex-col justify-between">
+            <div className={`p-4 bg-white dark:bg-slate-900 rounded-2xl border-2 transition-all duration-300 flex flex-col justify-between ${
+              (lastUpdated === 'principal' || status === 'approved')
+                ? 'border-amber-500 ring-4 ring-amber-300/80 shadow-xl shadow-amber-500/40 bg-amber-50/60 dark:bg-amber-950/40'
+                : 'border-amber-200 dark:border-amber-900'
+            }`}>
               <div>
-                <p className="text-xs font-black text-amber-900 dark:text-amber-300 uppercase mb-1">
-                  Hiệu trưởng phê duyệt xếp loại chính thức:
-                </p>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs font-black text-amber-900 dark:text-amber-300 uppercase">
+                    Hiệu trưởng phê duyệt xếp loại chính thức:
+                  </p>
+                  {(lastUpdated === 'principal' || status === 'approved') && (
+                    <span className="px-2 py-0.5 text-[10px] font-black bg-amber-600 text-white rounded-md shadow-xs animate-pulse">
+                      ✨ Đã duyệt
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center justify-between mt-2">
                   <div>
                     <span className={`inline-block px-3 py-1 rounded-full text-xs font-black border ${
@@ -1204,10 +1256,14 @@ export const Form03Page: React.FC<Form03PageProps> = ({
               {/* Nút HT cập nhật: MÀU NÂU */}
               <button
                 onClick={() => handleSave('approved', `✅ Đã cập nhật điểm Hiệu trưởng đánh giá (${grandTotal_Principal} điểm) vào File tổng hợp ${teachers.length} Giáo viên!`)}
-                className="w-full mt-4 px-3 py-2.5 bg-[#78350f] hover:bg-[#58260b] text-white font-black text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5 cursor-pointer"
+                className={`w-full mt-4 px-3 py-2.5 font-black text-xs rounded-xl shadow transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer ${
+                  (lastUpdated === 'principal' || status === 'approved') && saveToast
+                    ? 'bg-amber-800 text-white ring-2 ring-amber-300 shadow-md shadow-amber-600/40'
+                    : 'bg-[#78350f] hover:bg-[#58260b] text-white'
+                }`}
               >
                 <ShieldCheck className="w-4 h-4 text-amber-200" />
-                <span>Cập nhật điểm Hiệu trưởng duyệt ({grandTotal_Principal}đ) -&gt; File tổng hợp</span>
+                <span>{(lastUpdated === 'principal' || status === 'approved') && saveToast ? '✨ Đã lưu điểm HT duyệt sang File tổng hợp!' : `Cập nhật điểm Hiệu trưởng duyệt (${grandTotal_Principal}đ) -> File tổng hợp`}</span>
               </button>
             </div>
 
@@ -1299,13 +1355,25 @@ export const Form03Page: React.FC<Form03PageProps> = ({
       </div>
 
       {/* Save Action Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-200/90 dark:bg-slate-800 p-4 rounded-2xl border-2 border-slate-300 dark:border-slate-700">
+      <div className={`flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl border-2 transition-all duration-300 ${
+        saveToast
+          ? 'bg-slate-900 text-white border-amber-400 ring-4 ring-amber-300/50 shadow-2xl shadow-amber-500/30'
+          : 'bg-slate-200/90 dark:bg-slate-800 border-slate-300 dark:border-slate-700'
+      }`}>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-black text-slate-900 dark:text-slate-100">Trạng thái:</span>
-          <span className={`px-3 py-1 text-xs font-black rounded-lg ${
-            status === 'approved' ? 'bg-[#78350f] text-white' : 'bg-amber-600 text-white'
+          <span className="text-xs font-black uppercase tracking-wide text-slate-900 dark:text-slate-100">Trạng thái:</span>
+          <span className={`px-4 py-1.5 text-xs font-black rounded-xl transition-all duration-300 flex items-center gap-1.5 shadow-md ${
+            status === 'approved' || lastUpdated === 'principal'
+              ? 'bg-gradient-to-r from-amber-600 via-amber-700 to-[#78350f] text-amber-100 ring-4 ring-amber-300 shadow-xl shadow-amber-600/50 animate-pulse'
+              : lastUpdated === 'teacher'
+              ? 'bg-gradient-to-r from-blue-600 to-emerald-600 text-white ring-4 ring-blue-300 shadow-xl shadow-blue-500/50 animate-pulse'
+              : 'bg-amber-600 text-white shadow-sm'
           }`}>
-            {status === 'approved' ? '✅ Hiệu trưởng đã duyệt' : '⏳ Đã gửi (Chờ phê duyệt)'}
+            {status === 'approved' || lastUpdated === 'principal'
+              ? '✨ ✅ Hiệu trưởng đã duyệt chính thức'
+              : lastUpdated === 'teacher'
+              ? '🌟 ⏳ Đã cập nhật điểm GV tự chấm (Chờ duyệt)'
+              : '⏳ Đã gửi (Chờ phê duyệt)'}
           </span>
         </div>
 
@@ -1313,16 +1381,16 @@ export const Form03Page: React.FC<Form03PageProps> = ({
           {/* Giáo viên Lưu: MÀU XANH */}
           <button
             onClick={() => handleSave('submitted')}
-            className={`px-4 py-3 font-black text-xs rounded-xl shadow-lg transition flex items-center gap-1.5 cursor-pointer ${
-              saveToast && status !== 'approved'
-                ? 'bg-blue-800 ring-2 ring-blue-300 text-white animate-pulse'
+            className={`px-4 py-3 font-black text-xs rounded-xl shadow-lg transition-all duration-300 flex items-center gap-1.5 cursor-pointer ${
+              saveToast && lastUpdated === 'teacher'
+                ? 'bg-gradient-to-r from-blue-700 to-emerald-600 ring-4 ring-emerald-300 text-white animate-pulse shadow-xl shadow-emerald-500/40 scale-105'
                 : 'bg-blue-700 hover:bg-blue-800 text-white'
             }`}
           >
-            {saveToast && status !== 'approved' ? (
+            {saveToast && lastUpdated === 'teacher' ? (
               <>
                 <CheckCircle className="w-4 h-4 text-white" />
-                <span>✅ ĐÃ LƯU MẪU 03 THÀNH CÔNG!</span>
+                <span>✨ ĐÃ CẬP NHẬT ĐIỂM GV TỰ CHẤM!</span>
               </>
             ) : (
               <>
@@ -1335,16 +1403,16 @@ export const Form03Page: React.FC<Form03PageProps> = ({
           {/* Hiệu trưởng Duyệt: MÀU NÂU */}
           <button
             onClick={() => handleSave('approved')}
-            className={`px-5 py-3 font-black text-xs rounded-xl shadow-lg transition flex items-center gap-1.5 cursor-pointer ${
-              saveToast && status === 'approved'
-                ? 'bg-[#58260b] ring-2 ring-amber-300 text-white animate-pulse'
+            className={`px-5 py-3 font-black text-xs rounded-xl shadow-lg transition-all duration-300 flex items-center gap-1.5 cursor-pointer ${
+              saveToast && (lastUpdated === 'principal' || status === 'approved')
+                ? 'bg-gradient-to-r from-amber-600 via-amber-700 to-[#58260b] ring-4 ring-amber-300 text-white animate-pulse shadow-xl shadow-amber-500/50 scale-105'
                 : 'bg-[#78350f] hover:bg-[#58260b] text-white'
             }`}
           >
-            {saveToast && status === 'approved' ? (
+            {saveToast && (lastUpdated === 'principal' || status === 'approved') ? (
               <>
                 <CheckCircle className="w-4 h-4 text-white" />
-                <span>✅ ĐÃ DUYỆT MẪU 03 THÀNH CÔNG!</span>
+                <span>✨ ĐÃ DUYỆT CHÍNH THỨC!</span>
               </>
             ) : (
               <>

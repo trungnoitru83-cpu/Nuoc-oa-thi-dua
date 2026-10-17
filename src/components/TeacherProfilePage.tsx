@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Calendar, GraduationCap, Building2, School, Link as LinkIcon, FileText, CheckCircle, Plus, Trash2, ExternalLink, Save, ArrowRight, ChevronLeft, ChevronRight, Users, Send, Award, FileSpreadsheet, ShieldCheck, Copy, Upload, Download, Sparkles, Eye, EyeOff, Table, CheckSquare, Layers, Printer, FileDown, RefreshCw } from 'lucide-react';
+import { User, Calendar, GraduationCap, Building2, School, Link as LinkIcon, FileText, CheckCircle, Plus, Trash2, ExternalLink, Save, ArrowRight, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Users, Send, Award, FileSpreadsheet, ShieldCheck, Copy, Upload, Download, Sparkles, Eye, EyeOff, Table, CheckSquare, Layers, Printer, FileDown, RefreshCw, PenTool } from 'lucide-react';
 import { Teacher, Form01Data, Form01Task, Form03Evaluation, Role } from '../types';
-import { isLeaderTeacher, getClassification, getClassificationLabel } from '../data/form03Criteria';
+import { isLeaderTeacher } from '../data/form03Criteria';
 import { getTeacherEmulationCode } from '../data/mockTeachers';
 import { exportForm01ToWord, exportForm01ToPdfPrint } from '../utils/exportDecree30';
 import { saveForm01ToGoogleSheet, saveEvaluationToGoogleSheet, fetchForm01FromGoogleSheet } from '../lib/googleSheetService';
 import { formatTeacherId } from '../utils/formatTeacherId';
+import { canSignForm01, canViewSummary, getAuthorizedManager, AUTHORIZED_MANAGERS } from '../lib/authorizedManagers';
 
 interface SignatureBoxPadProps {
   title: string;
@@ -260,6 +261,7 @@ interface TeacherProfilePageProps {
   onUpdateTeacher: (updated: Teacher) => void;
   onUpdateForm01: (updatedForm01: Form01Data) => void;
   onNavigateToForm03: () => void;
+  onNavigateToSummary?: () => void;
 }
 
 export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
@@ -274,7 +276,8 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
   onSelectTeacher,
   onUpdateTeacher,
   onUpdateForm01,
-  onNavigateToForm03
+  onNavigateToForm03,
+  onNavigateToSummary
 }) => {
   // Local state for editable profile fields
   const [fullName, setFullName] = useState(teacher.fullName);
@@ -293,11 +296,12 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
   const [tasks, setTasks] = useState<Form01Task[]>(form01.tasks || []);
 
   // Signature States for Mẫu 01 (HIỆU TRƯỜNG - PHT/TTCM - CÁ NHÂN NGƯỜI TỰ ĐÁNH GIÁ)
+  const defaultLeader = teacher.department === 'KHTN' ? 'Phạm Lý Nghĩa' : teacher.department === 'KHXH2' ? 'Nguyễn Đình Lâu' : 'Hồ Thị Hiến';
   const [evaluatorName, setEvaluatorName] = useState(form01.evaluatorName || teacher.fullName);
   const [evaluatorSignature, setEvaluatorSignature] = useState(form01.evaluatorSignature || teacher.teacherSignature || '');
-  const [leaderName, setLeaderName] = useState(form01.leaderName || 'Nguyễn Xuân Ảnh');
+  const [leaderName, setLeaderName] = useState(form01.leaderName || defaultLeader);
   const [leaderSignature, setLeaderSignature] = useState(form01.leaderSignature || '');
-  const [principalName, setPrincipalName] = useState(form01.principalName || 'Bùi Văn Sáu');
+  const [principalName, setPrincipalName] = useState(form01.principalName || 'Nguyễn Xuân Ảnh');
   const [principalSignature, setPrincipalSignature] = useState(form01.principalSignature || teacher.principalSignature || '');
 
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -305,6 +309,8 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [pastedCsvText, setPastedCsvText] = useState('');
   const [showVisualSheetPreview, setShowVisualSheetPreview] = useState(true);
+  // Quản lý ẩn/hiện Thông Tin Giáo Viên & Minh Chứng Mẫu 01 (Mặc định: false - Ẩn gọn gàng)
+  const [showTeacherInfoAndEvidence, setShowTeacherInfoAndEvidence] = useState(false);
 
   // Export handlers Decree 30/2020/NĐ-CP
   const handleExportWord = () => {
@@ -519,15 +525,6 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
 
   const isLeader = isLeaderTeacher(teacher);
 
-  // Mẫu 03 Evaluation Summary calculation
-  const partA = evaluation ? Math.min(30, evaluation.totalPartA_Principal) : 30;
-  const partB = evaluation ? Math.min(70, evaluation.totalPartB_Principal) : 60;
-  const bonusVal = evaluation ? (evaluation.totalBonus_Principal || 0) : 0;
-  const dedVal = evaluation ? (evaluation.totalDeduction_Principal || 0) : 0;
-  const grandTotalVal = evaluation ? (evaluation.grandTotal_Principal ?? Math.min(100, Math.max(0, Math.round((partA + partB + bonusVal - dedVal) * 100) / 100))) : Math.min(100, Math.max(0, Math.round((partA + partB) * 100) / 100));
-  const clsType = getClassification(grandTotalVal);
-  const clsLabel = getClassificationLabel(clsType);
-
   const [isSaving, setIsSaving] = useState(false);
 
   const handleOpenPreviewModal = (e: React.FormEvent) => {
@@ -592,6 +589,8 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
       leaderSignature,
       principalName,
       principalSignature,
+      isUpdated: true,
+      isSubmitted: true,
       updatedAt: new Date().toISOString()
     };
     onUpdateForm01(updatedForm01);
@@ -666,35 +665,7 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
   return (
     <div className="max-w-6xl mx-auto py-8 px-4 sm:px-6">
       
-      {/* Header Info */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-3 py-1 text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 rounded-full">
-              TRANG 2: HỒ SƠ & MẪU 01
-            </span>
-            <span className="text-xs text-slate-500 font-semibold">
-              Tháng {selectedMonth}/{selectedYear}
-            </span>
-          </div>
-          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">
-            Thông Tin Giáo Viên & Minh Chứng Mẫu 01
-          </h1>
-          <p className="text-xs text-slate-500">
-            Cập nhật lý lịch chuyên môn và đính kèm đường link / file báo cáo Mẫu 01
-          </p>
-        </div>
 
-        <button
-          onClick={onNavigateToForm03}
-          className={`flex items-center gap-2 px-5 py-2.5 text-white font-black text-xs rounded-2xl shadow-md transition shrink-0 cursor-pointer ${
-            isLeader ? 'btn-principal' : 'btn-teacher'
-          }`}
-        >
-          <span>{isLeader ? 'Chuyển sang Bảng chấm Mẫu 02 (TTCM, TPCM, HT, HP)' : 'Chuyển sang Bảng chấm Mẫu 03 (GV, NV)'}</span>
-          <ArrowRight className="w-4 h-4" />
-        </button>
-      </div>
 
       {/* Quick Teacher Selector Bar for Trang 2 (Chỉ hiển thị cho Quản trị & Hiệu trưởng, ẩn đối với Viên chức đăng nhập cá nhân) */}
       {teachers.length > 0 && onSelectTeacher && (currentRole === 'admin' || currentRole === 'principal') && (
@@ -799,20 +770,82 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
       )}
 
       <form onSubmit={handleOpenPreviewModal} className="space-y-8">
-        
-        {/* Section 1: Thông tin cá nhân & chuyên môn */}
-        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-md border border-slate-200 dark:border-slate-800">
-          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-100 dark:border-slate-800">
-            <div className="p-3 bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 rounded-2xl">
+
+        {/* Thanh Điều Khiển Ẩn / Mở Rộng: Thông Tin Giáo Viên & Minh Chứng Mẫu 01 (Mặc định Ẩn) */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 rounded-2xl shrink-0">
               <User className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                1. Thông tin lý lịch viên chức, người lao động
-              </h2>
-              <p className="text-xs text-slate-500">
-                Các thông tin đơn vị công tác, chức vụ và bộ môn chuyên môn của viên chức, người lao động
+              <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <span>Thông Tin Giáo Viên &amp; Minh Chứng Mẫu 01</span>
+                {!showTeacherInfoAndEvidence && (
+                  <span className="px-2.5 py-0.5 text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-full border border-slate-300 dark:border-slate-700">
+                    Đã ẩn gọn gàng
+                  </span>
+                )}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {showTeacherInfoAndEvidence 
+                  ? 'Đang hiển thị lý lịch cá nhân và bảng nhiệm vụ minh chứng Mẫu 01.' 
+                  : 'Phần thông tin cá nhân và bảng minh chứng Mẫu 01 đã được ẩn để giao diện gọn gàng, tập trung ký xác nhận.'}
               </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowTeacherInfoAndEvidence(!showTeacherInfoAndEvidence)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-extrabold text-xs rounded-2xl transition cursor-pointer shrink-0 border border-slate-300 dark:border-slate-700 shadow-sm"
+          >
+            {showTeacherInfoAndEvidence ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-blue-600" />}
+            <span>{showTeacherInfoAndEvidence ? 'Ẩn Thông Tin & Minh Chứng' : '👁️ Mở Rộng Thông Tin & Minh Chứng'}</span>
+          </button>
+        </div>
+
+        {showTeacherInfoAndEvidence && (
+          <div className="space-y-8 animate-fadeIn">
+            {/* Section 1: Thông tin cá nhân & chuyên môn */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-md border border-slate-200 dark:border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 rounded-2xl">
+                <User className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                  1. Thông tin lý lịch viên chức, người lao động
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Các thông tin đơn vị công tác, chức vụ và bộ môn chuyên môn của viên chức, người lao động
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {onNavigateToSummary && canViewSummary(currentUser, currentRole) && (
+                <button
+                  type="button"
+                  onClick={onNavigateToSummary}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                  title="Quyền xem Bảng Tổng Hợp thi đua toàn trường"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
+                  <span>Bảng Tổng Hợp</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={onNavigateToForm03}
+                className={`flex items-center gap-2 px-4 py-2 text-white font-bold text-xs rounded-xl shadow-xs transition shrink-0 cursor-pointer ${
+                  isLeader ? 'btn-principal' : 'btn-teacher'
+                }`}
+              >
+                <span>{isLeader ? 'Bảng chấm Mẫu 02' : 'Bảng chấm Mẫu 03'}</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
@@ -952,57 +985,6 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
               </div>
             </div>
 
-          </div>
-        </div>
-
-        {/* Section 1.5: Thống Kê Tổng Điểm Mẫu 03/02 của Cán Bộ Trong Tháng */}
-        <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-indigo-500/30">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-indigo-800/50">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-indigo-500/20 text-indigo-300 rounded-2xl border border-indigo-400/30">
-                <Award className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-                  <span>Tổng Điểm Đánh Giá {isLeader ? 'Mẫu 02 (CBQL)' : 'Mẫu 03 (GV, NV)'} - Tháng {selectedMonth}/2026</span>
-                </h3>
-                <p className="text-xs text-indigo-200/80">
-                  Tự động đồng bộ điểm Tiêu chí chung, Tiêu chí chuyên môn, Điểm cộng, Điểm trừ & Mức xếp loại
-                </p>
-              </div>
-            </div>
-
-            <div className="px-4 py-2 bg-emerald-500/20 border border-emerald-400/40 rounded-2xl text-emerald-300 font-extrabold text-xs flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-emerald-400" />
-              <span>{clsLabel}</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 text-center">
-            <div className="bg-white/10 dark:bg-slate-900/60 p-3.5 rounded-2xl border border-white/10">
-              <p className="text-[10px] text-indigo-200 uppercase font-bold">Điểm Tiêu chí chung (A)</p>
-              <p className="text-xl font-black text-blue-300 mt-1">{partA} <span className="text-xs text-indigo-300/70 font-normal">/30</span></p>
-            </div>
-
-            <div className="bg-white/10 dark:bg-slate-900/60 p-3.5 rounded-2xl border border-white/10">
-              <p className="text-[10px] text-indigo-200 uppercase font-bold">Tiêu chí chuyên môn (B)</p>
-              <p className="text-xl font-black text-indigo-300 mt-1">{partB} <span className="text-xs text-indigo-300/70 font-normal">/70</span></p>
-            </div>
-
-            <div className="bg-white/10 dark:bg-slate-900/60 p-3.5 rounded-2xl border border-white/10">
-              <p className="text-[10px] text-indigo-200 uppercase font-bold">Điểm Cộng (+C)</p>
-              <p className="text-xl font-black text-emerald-300 mt-1">+{bonusVal}</p>
-            </div>
-
-            <div className="bg-white/10 dark:bg-slate-900/60 p-3.5 rounded-2xl border border-white/10">
-              <p className="text-[10px] text-indigo-200 uppercase font-bold">Điểm Trừ (-D)</p>
-              <p className="text-xl font-black text-rose-300 mt-1">-{dedVal}</p>
-            </div>
-
-            <div className="col-span-2 sm:col-span-1 bg-amber-400/20 p-3.5 rounded-2xl border border-amber-400/40">
-              <p className="text-[10px] text-amber-200 uppercase font-bold">Tổng Điểm Đánh Giá</p>
-              <p className="text-2xl font-black text-amber-300 mt-1">{grandTotalVal} <span className="text-xs text-amber-200/70 font-normal">/100</span></p>
-            </div>
           </div>
         </div>
 
@@ -1566,9 +1548,12 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
               className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
           </div>
+        </div>
+        </div>
+        )}
 
-          {/* KHUNG XÁC NHẬN CHỮ KÝ 3 VỊ TRÍ (HIỆU TRƯỜNG - PHT/TTCM - CÁ NHÂN NGƯỜI TỰ ĐÁNH GIÁ) */}
-          <div className="bg-slate-100/90 dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-700 rounded-3xl p-5 mb-6 shadow-sm">
+        {/* KHUNG XÁC NHẬN CHỮ KÝ 3 VỊ TRÍ (HIỆU TRƯỜNG - PHT/TTCM - CÁ NHÂN NGƯỜI TỰ ĐÁNH GIÁ) */}
+        <div className="bg-slate-100/90 dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-700 rounded-3xl p-5 mb-6 shadow-sm">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-200 dark:border-slate-800">
               <div>
                 <h4 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase flex items-center gap-2">
@@ -1583,51 +1568,143 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
               </span>
             </div>
 
+            {/* Quick Signing Bar for Authorized Managers */}
+            {canSignForm01(currentUser) && (
+              <div className="mb-5 p-4 rounded-2xl bg-gradient-to-r from-blue-900/15 via-amber-900/15 to-emerald-900/15 border-2 border-blue-400 dark:border-blue-700 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-700 text-white rounded-xl shadow-xs shrink-0">
+                    <ShieldCheck className="w-5 h-5 text-amber-300" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
+                      <span>Cán bộ được phân quyền ký xác nhận Mẫu 01:</span>
+                      <strong className="text-blue-700 dark:text-blue-400">{currentUser?.fullName}</strong>
+                      {getAuthorizedManager(currentUser) && (
+                        <span className="px-2 py-0.5 bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 rounded text-[10px] font-bold">
+                          {getAuthorizedManager(currentUser)?.signatureTitle}
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
+                      Bấm nút bên dưới để tự động ghi tên &amp; gắn chữ ký xác nhận của bạn vào vị trí thẩm định của phiếu Mẫu 01 này.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (currentUser) {
+                        setLeaderName(currentUser.fullName);
+                        if (currentUser.teacherSignature) {
+                          setLeaderSignature(currentUser.teacherSignature);
+                        }
+                        alert(`✅ Đã chọn ${currentUser.fullName} ký xác nhận tại Vị trí 2 (PHT / Tổ trưởng)!`);
+                      }
+                    }}
+                    className="px-3.5 py-2 bg-blue-700 hover:bg-blue-800 text-white font-black text-xs rounded-xl shadow-sm transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <PenTool className="w-3.5 h-3.5" />
+                    <span>Tôi ký Vị trí 2 (PHT / Tổ trưởng)</span>
+                  </button>
+
+                  {(currentUser?.isAdmin || currentUser?.position?.toLowerCase().includes('hiệu trưởng') || currentUser?.email === 'anh.nguyen@nuocoa.edu.vn') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (currentUser) {
+                          setPrincipalName(currentUser.fullName);
+                          if (currentUser.principalSignature || currentUser.teacherSignature) {
+                            setPrincipalSignature(currentUser.principalSignature || currentUser.teacherSignature || '');
+                          }
+                          alert(`✅ Đã chọn ${currentUser.fullName} ký duyệt tại Vị trí 1 (Hiệu trưởng)!`);
+                        }
+                      }}
+                      className="px-3.5 py-2 bg-[#78350f] hover:bg-[#58260b] text-white font-black text-xs rounded-xl shadow-sm transition cursor-pointer flex items-center gap-1.5"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 text-amber-200" />
+                      <span>Tôi ký Vị trí 1 (Hiệu trưởng)</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               
               {/* Vị trí 1: HIỆU TRƯỜNG */}
-              <SignatureBoxPad
-                title="Hiệu trưởng"
-                roleBadge="1. HIỆU TRƯỜNG"
-                badgeBg="bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300"
-                subtitle="(Ký, đóng dấu và ghi rõ họ tên)"
-                nameValue={principalName}
-                onNameChange={setPrincipalName}
-                signatureValue={principalSignature}
-                onSignatureChange={setPrincipalSignature}
-                footerText="Phê duyệt của Thủ trưởng đơn vị"
-                focusColor="focus:ring-amber-500"
-              />
+              <div className="flex flex-col">
+                <SignatureBoxPad
+                  title="Hiệu trưởng"
+                  roleBadge="1. HIỆU TRƯỜNG"
+                  badgeBg="bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300"
+                  subtitle="(Ký, đóng dấu và ghi rõ họ tên)"
+                  nameValue={principalName}
+                  onNameChange={setPrincipalName}
+                  signatureValue={principalSignature}
+                  onSignatureChange={setPrincipalSignature}
+                  footerText="Phê duyệt của Thủ trưởng đơn vị"
+                  focusColor="focus:ring-amber-500"
+                />
+              </div>
 
               {/* Vị trí 2: PHÓ HIỆU TRƯỜNG / TTCM */}
-              <SignatureBoxPad
-                title="PHT / Tổ trưởng"
-                roleBadge="2. PHÓ HIỆU TRƯỜNG / TTCM"
-                badgeBg="bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-300"
-                subtitle="(Xác nhận & ký rõ họ tên)"
-                nameValue={leaderName}
-                onNameChange={setLeaderName}
-                signatureValue={leaderSignature}
-                onSignatureChange={setLeaderSignature}
-                footerText="Thẩm định của Tổ trưởng chuyên môn"
-                focusColor="focus:ring-blue-500"
-              />
+              <div className="flex flex-col">
+                {/* Fast Signer Preset Picker for Vị trí 2 */}
+                <div className="mb-2 p-2 bg-blue-50/70 dark:bg-slate-800 rounded-xl border border-blue-200 dark:border-slate-700">
+                  <label className="block text-[10px] font-black text-blue-900 dark:text-blue-300 uppercase mb-1">
+                    ⚡ Chọn người ký thẩm tra (PHT / TTCM):
+                  </label>
+                  <select
+                    value={AUTHORIZED_MANAGERS.some(m => m.fullName === leaderName) ? leaderName : ''}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setLeaderName(e.target.value);
+                      }
+                    }}
+                    className="w-full p-1.5 bg-white dark:bg-slate-900 border border-blue-300 dark:border-slate-600 rounded-lg text-xs font-bold text-slate-900 dark:text-slate-100 cursor-pointer"
+                  >
+                    <option value="">-- Chọn cán bộ được phân quyền --</option>
+                    <option value="Hồ Thị Hiến">Hồ Thị Hiến (Phó Hiệu trưởng)</option>
+                    <option value="Đinh Hữu Phước">Đinh Hữu Phước (Phó Hiệu trưởng)</option>
+                    <option value="Nguyễn Đình Lâu">Nguyễn Đình Lâu (Tổ trưởng KHXH2)</option>
+                    <option value="Phạm Lý Nghĩa">Phạm Lý Nghĩa (Tổ trưởng KHTN)</option>
+                    <option value="Nguyễn Văn Sĩ">Nguyễn Văn Sĩ (Tổ phó CM KHTN)</option>
+                    <option value="Nguyễn Thị Hồng">Nguyễn Thị Hồng (Thẩm định Văn phòng)</option>
+                    <option value="Nguyễn Xuân Ảnh">Nguyễn Xuân Ảnh (Hiệu trưởng)</option>
+                  </select>
+                </div>
+
+                <SignatureBoxPad
+                  title="PHT / Tổ trưởng"
+                  roleBadge="2. PHÓ HIỆU TRƯỜNG / TTCM"
+                  badgeBg="bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-300"
+                  subtitle="(Xác nhận & ký rõ họ tên)"
+                  nameValue={leaderName}
+                  onNameChange={setLeaderName}
+                  signatureValue={leaderSignature}
+                  onSignatureChange={setLeaderSignature}
+                  footerText="Thẩm định của Tổ trưởng chuyên môn"
+                  focusColor="focus:ring-blue-500"
+                />
+              </div>
 
               {/* Vị trí 3: CÁ NHÂN NGƯỜI TỰ ĐÁNH GIÁ */}
-              <SignatureBoxPad
-                title="Người tự đánh giá"
-                roleBadge="3. CÁ NHÂN NGƯỜI TỰ ĐÁNH GIÁ"
-                badgeBg="bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-300"
-                subtitle="(Ký và ghi rõ họ tên)"
-                nameValue={evaluatorName}
-                onNameChange={setEvaluatorName}
-                signatureValue={evaluatorSignature}
-                onSignatureChange={setEvaluatorSignature}
-                footerText="Cam kết tính trung thực Mẫu 01"
-                focusColor="focus:ring-emerald-500"
-              />
-
-            </div>
+              <div className="flex flex-col">
+                <SignatureBoxPad
+                  title="Người tự đánh giá"
+                  roleBadge="3. CÁ NHÂN NGƯỜI TỰ ĐÁNH GIÁ"
+                  badgeBg="bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-300"
+                  subtitle="(Ký và ghi rõ họ tên)"
+                  nameValue={evaluatorName}
+                  onNameChange={setEvaluatorName}
+                  signatureValue={evaluatorSignature}
+                  onSignatureChange={setEvaluatorSignature}
+                  footerText="Cam kết tính trung thực Mẫu 01"
+                  focusColor="focus:ring-emerald-500"
+                />
+              </div>
           </div>
 
         </div>
