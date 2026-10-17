@@ -48,6 +48,11 @@ export interface Form01Task {
   status: 'completed' | 'in_progress' | 'not_completed';
   noteExplanation?: string; // Kiến nghị, giải trình (Dropdown/Text)
   evidenceLink?: string; // Link đính kèm minh chứng
+  // Bổ sung các trường Mẫu 01:
+  complexity?: string;     // Độ phức tạp / Tính chất (Thường xuyên, Phức tạp...)
+  role?: string;           // Vai trò (Chủ trì, Phối hợp...)
+  progressStatus?: string; // Tiến độ (Đúng tiến độ, Chậm tiến độ...)
+  notes?: string;          // Kiến nghị / Giải trình
 }
 
 export interface Form01Data {
