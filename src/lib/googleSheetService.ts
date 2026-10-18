@@ -1,11 +1,11 @@
 import { Form03Evaluation, Form01Data, Form01Task, Teacher } from '../types';
-import { formatTeacherId, buildMaChamDiem } from '../utils/formatTeacherId';
+import { formatTeacherId, buildMaChamDiem, formatKyDanhGia, deduplicateTeachers } from '../utils/formatTeacherId';
 
 export const GOOGLE_APPS_SCRIPT_LIBRARY_URL =
   'https://script.google.com/macros/library/d/16GMDqaJn8KTH5-kRVQ0vRpnO_ZmkY9P6mGR3WoZy38XU7RF4q0D2oM0v/2';
 
 export const DEFAULT_GOOGLE_SHEET_API_URL =
-  'https://script.google.com/macros/s/AKfycbxTxIiN9rWixvesYhuOBIP0GKgx7B10PtbaJfWSiGwvzTDdG4BU9WTID69e9D45kDqF/exec';
+  'https://script.google.com/macros/s/AKfycbxJ6W8LVbLONmyqMK1xIXIKTF3ewcLHvmuTvLMxn6qYItk8SWHarDZxVn454euN0G3W/exec';
 
 /**
  * Get configured Google Apps Script Web App URL.
@@ -114,7 +114,7 @@ export function validateAndBuildDiemPayload(
   }
 
   const rawCode = activeTeacher.emulationCode || activeTeacher.id || (currentUser?.emulationCode || currentUser?.id);
-  const teacherIdClean = formatTeacherId(rawCode);
+  const teacherIdClean = formatTeacherId(rawCode).trim().toUpperCase();
   const hoTen = (activeTeacher.fullName || currentUser?.fullName || '').trim();
 
   if (!teacherIdClean || teacherIdClean === 'UNDEFINED' || (teacherIdClean === 'TĐ00' && activeTeacher.id !== 'admin_trung83') || !hoTen) {
@@ -131,9 +131,8 @@ export function validateAndBuildDiemPayload(
     };
   }
 
-  const monthPad = String(month).padStart(2, '0');
-  const yearStr = String(year);
-  const kyDanhGia = `${monthPad}/${yearStr}`; // "10/2026"
+  // Chuẩn hóa kỳ đánh giá định dạng "MM/YYYY" (ví dụ: "10/2026")
+  const kyDanhGia = formatKyDanhGia(month, year);
   const maChamDiem = buildMaChamDiem(kyDanhGia, teacherIdClean); // "CD-202610-TĐ16"
 
   const chucVu = (activeTeacher.position || 'Giáo viên').trim();
@@ -177,31 +176,53 @@ export function validateAndBuildDiemPayload(
   };
   const trangThai = evaluation.status === 'approved' ? 'Đã duyệt' : (statusMap[evaluation.status] || 'Chờ BGH duyệt');
 
+  const nowIso = new Date().toISOString();
+
   const payload: any = {
     action: 'saveDiem',
     actionAlias: 'save_mau03',
     type: 'mau03',
     maChamDiem,
     maBanGhi: maChamDiem,
+    ma_cham_diem: maChamDiem,
+    ma_ban_ghi: maChamDiem,
+
+    // Chuẩn hóa định dạng kỳ đánh giá và mã thi đua (Yêu cầu 2)
+    ky_danh_gia: kyDanhGia,
     kyDanhGia,
+    ma_thi_dua: teacherIdClean,
     maThiDua: teacherIdClean,
     teacherId: teacherIdClean,
+
+    ho_ten: hoTen,
     hoTen,
     teacherName: hoTen,
+    chuc_vu: chucVu,
     chucVu,
+    to_chuyen_mon: toChuyenMon,
     toChuyenMon,
+    to_phong_ban: toChuyenMon,
+    mau_ap_dung: mauApDung,
     mauApDung,
+    diem_a: diemA,
     diemA,
+    diem_b: diemB,
     diemB,
+    diem_cong_tru: diemCongTru,
     diemCongTru,
+    tong_diem: tongDiem,
     tongDiem,
+    xep_loai: xepLoai,
     xepLoai,
+    y_kien: yKien,
     yKien,
     status: evaluation.status || 'approved',
+    trang_thai: trangThai,
     trangThai,
     capNhatDuyet: evaluation.status === 'approved',
     isOfficialApproval: evaluation.status === 'approved',
-    ngayGui: new Date().toISOString()
+    ngay_gui: nowIso,
+    ngayGui: nowIso
   };
 
   return { isValid: true, payload };
@@ -249,7 +270,7 @@ export async function saveForm01ToGoogleSheet(
 
   const activeTeacher = teacher || currentUser;
   const rawCode = activeTeacher?.emulationCode || activeTeacher?.id || (currentUser?.emulationCode || currentUser?.id);
-  const teacherIdClean = formatTeacherId(rawCode);
+  const teacherIdClean = formatTeacherId(rawCode).trim().toUpperCase();
   const hoTen = (activeTeacher?.fullName || currentUser?.fullName || '').trim();
 
   if (!teacherIdClean || teacherIdClean === 'UNDEFINED' || !hoTen) {
@@ -258,9 +279,8 @@ export async function saveForm01ToGoogleSheet(
     return { success: false, message: errorMsg, scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL };
   }
 
-  const monthPad = String(month).padStart(2, '0');
-  const yearStr = String(year);
-  const kyDanhGia = `${monthPad}/${yearStr}`;
+  // Chuẩn hóa kỳ đánh giá "MM/YYYY" (ví dụ: "10/2026")
+  const kyDanhGia = formatKyDanhGia(month, year);
   const maChamDiem = buildMaChamDiem(kyDanhGia, teacherIdClean);
 
   const tasksList = form01.tasks || [];
@@ -449,7 +469,8 @@ export async function fetchForm01FromGoogleSheet(
 }
 
 /**
- * Bulk Sync: Scans all teachers' evaluation records in Firestore/State and pushes them to Google Sheets
+ * Bulk Sync: Scans all teachers' evaluation records, deduplicates them (1 Viên chức - 1 Kỳ - 1 Dòng duy nhất),
+ * and pushes the deduplicated danh_sach_tong_hop and individual records to Google Sheets.
  */
 export async function syncAllTeachersToGoogleSheet(
   teachers: Teacher[],
@@ -459,14 +480,110 @@ export async function syncAllTeachersToGoogleSheet(
   currentUser?: Teacher | null,
   onProgress?: (current: number, total: number, lastTeacherName: string) => void
 ): Promise<{ success: boolean; total: number; successCount: number; failedCount: number; message: string; scriptLibraryUrl: string }> {
+  // 1. Lọc trùng danh sách viên chức (Yêu cầu 3: 1 Viên chức - 1 Kỳ - 1 Dòng duy nhất)
+  const cleanTeachers = deduplicateTeachers(teachers);
+  const total = cleanTeachers.length;
+  const kyDanhGia = formatKyDanhGia(month, year);
+  const apiUrl = getGoogleSheetApiUrl();
+
+  console.log(`🔄 [BulkSync] Bắt đầu đồng bộ ${total} giáo viên (đã lọc trùng) lên Google Sheet tháng ${kyDanhGia}...`);
+
+  // 2. Xây dựng mảng danh_sach_tong_hop chuẩn hóa gửi kèm trong payload batch
+  const danh_sach_tong_hop = cleanTeachers.map((t, idx) => {
+    const code = formatTeacherId(t.emulationCode || t.id).trim().toUpperCase();
+    const key = `${t.id}_y${year}_m${month}`;
+    const ev = evaluations[key] || evaluations[`${t.id}_m${month}`] || evaluations[t.id];
+    const maChamDiem = buildMaChamDiem(kyDanhGia, code);
+
+    const chucVu = (t.position || t.subject || 'Giáo viên').trim();
+    const toChuyenMon = (t.department || 'Tổ chuyên môn').trim();
+    const isLeader = ['hiệu trưởng', 'phó hiệu trưởng', 'tổ trưởng', 'phó tổ trưởng', 'chủ tịch đoàn'].some(p =>
+      chucVu.toLowerCase().includes(p)
+    );
+
+    const diemA = typeof ev?.totalPartA_Principal === 'number' && ev.totalPartA_Principal > 0
+      ? ev.totalPartA_Principal
+      : (ev?.totalPartA_Teacher || 30);
+
+    const diemB = typeof ev?.totalPartB_Principal === 'number' && ev.totalPartB_Principal > 0
+      ? ev.totalPartB_Principal
+      : (ev?.totalPartB_Teacher || 60);
+
+    const bonus = typeof ev?.totalBonus_Principal === 'number'
+      ? ev.totalBonus_Principal
+      : (ev?.totalBonus_Teacher || 0);
+
+    const ded = typeof ev?.totalDeduction_Principal === 'number'
+      ? ev.totalDeduction_Principal
+      : (ev?.totalDeduction_Teacher || 0);
+
+    const diemCongTru = bonus - ded;
+
+    const tongDiem = typeof ev?.grandTotal_Principal === 'number' && ev.grandTotal_Principal > 0
+      ? ev.grandTotal_Principal
+      : (ev?.grandTotal_Teacher || 90);
+
+    const xepLoai = ev?.principalClassification || ev?.teacherClassification || 'Hoàn thành tốt';
+    const trangThai = ev?.status === 'approved' ? 'Đã duyệt' : 'Chờ BGH duyệt';
+
+    return {
+      stt: idx + 1,
+      ma_thi_dua: code,
+      maThiDua: code,
+      teacherId: code,
+      ky_danh_gia: kyDanhGia,
+      kyDanhGia,
+      ma_cham_diem: maChamDiem,
+      maChamDiem,
+      ho_ten: t.fullName,
+      hoTen: t.fullName,
+      chuc_vu: chucVu,
+      chucVu,
+      to_chuyen_mon: toChuyenMon,
+      toChuyenMon,
+      mau_ap_dung: isLeader ? 'Mẫu 02' : 'Mẫu 03',
+      mauApDung: isLeader ? 'Mẫu 02' : 'Mẫu 03',
+      diem_a: diemA,
+      diemA,
+      diem_b: diemB,
+      diemB,
+      diem_cong_tru: diemCongTru,
+      diemCongTru,
+      tong_diem: tongDiem,
+      tongDiem,
+      xep_loai: xepLoai,
+      xepLoai,
+      trang_thai: trangThai,
+      trangThai,
+      ngay_gui: new Date().toISOString()
+    };
+  });
+
+  // 3. Gửi payload danh_sach_tong_hop (đã lọc trùng) lên Google Apps Script
+  try {
+    const bulkPayload = {
+      action: 'dong_bo_tong_hop',
+      actionAlias: 'sync_summary',
+      type: 'summary',
+      ky_danh_gia: kyDanhGia,
+      kyDanhGia,
+      thang: month,
+      nam: year,
+      tong_so_vien_chuc: total,
+      danh_sach_tong_hop,
+      danhSachTongHop: danh_sach_tong_hop
+    };
+    await postToGoogleAppsScript(apiUrl, bulkPayload);
+  } catch (err) {
+    console.warn('Gửi batch danh_sach_tong_hop:', err);
+  }
+
+  // 4. Đồng bộ từng bản ghi đơn lẻ (chuẩn hóa ma_cham_diem để Google Sheet cập nhật đúng 1 dòng duy nhất)
   let successCount = 0;
   let failedCount = 0;
-  const total = teachers.length;
 
-  console.log(`🔄 [BulkSync] Bắt đầu đồng bộ ${total} giáo viên lên Google Sheet Library [${GOOGLE_APPS_SCRIPT_LIBRARY_URL}] tháng ${month}/${year}...`);
-
-  for (let i = 0; i < teachers.length; i++) {
-    const t = teachers[i];
+  for (let i = 0; i < cleanTeachers.length; i++) {
+    const t = cleanTeachers[i];
     const key = `${t.id}_y${year}_m${month}`;
     const ev = evaluations[key] || evaluations[`${t.id}_m${month}`] || evaluations[t.id];
 
@@ -486,7 +603,7 @@ export async function syncAllTeachersToGoogleSheet(
     }
 
     // Small delay to prevent hitting Apps Script rate limits
-    await new Promise(resolve => setTimeout(resolve, 150));
+    await new Promise(resolve => setTimeout(resolve, 120));
   }
 
   return {
@@ -494,7 +611,7 @@ export async function syncAllTeachersToGoogleSheet(
     total,
     successCount,
     failedCount,
-    message: `Đã đồng bộ ${successCount}/${total} bản ghi thành công lên Google Sheet (Tháng ${month}/${year}).`,
+    message: `Đã đồng bộ ${successCount}/${total} bản ghi (1 viên chức - 1 dòng duy nhất) lên Google Sheet (Kỳ ${kyDanhGia}).`,
     scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL
   };
 }

@@ -62,3 +62,27 @@ export function buildMaChamDiem(kyDanhGia: string, maThiDua: string): string {
   const kyDanhGiaClean = `${yearStr}${monthStr}`;
   return `CD-${kyDanhGiaClean}-${cleanCode}`;
 }
+
+/**
+ * Standardize Evaluation Period string to "MM/YYYY" (e.g. "10/2026", "06/2026")
+ */
+export function formatKyDanhGia(month: number | string, year: number | string): string {
+  const m = parseInt(String(month), 10) || 10;
+  const y = parseInt(String(year), 10) || 2026;
+  const monthPad = String(m).padStart(2, '0');
+  return `${monthPad}/${y}`;
+}
+
+/**
+ * Deduplicate teachers list by normalized emulation code (ma_thi_dua).
+ * Guarantees exactly 1 teacher per emulation code (1 Viên chức - 1 Kỳ - 1 Dòng duy nhất).
+ */
+export function deduplicateTeachers<T extends { id?: string; emulationCode?: string }>(teachers: T[]): T[] {
+  const map = new Map<string, T>();
+  for (const t of teachers) {
+    const code = formatTeacherId(t.emulationCode || t.id).trim().toUpperCase();
+    map.set(code, t);
+  }
+  return Array.from(map.values());
+}
+
