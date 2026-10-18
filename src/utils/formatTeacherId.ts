@@ -40,10 +40,10 @@ export function buildMaChamDiem(kyDanhGia: string, maThiDua: string): string {
   const cleanCode = formatTeacherId(maThiDua);
   
   // Parse month and year from kyDanhGia (e.g. "10/2026" or "2026/10" or "202610")
-  let monthStr = '10';
+  let monthStr = '01';
   let yearStr = '2026';
 
-  if (kyDanhGia.includes('/')) {
+  if (kyDanhGia && kyDanhGia.includes('/')) {
     const parts = kyDanhGia.split('/');
     if (parts.length === 2) {
       if (parts[0].length === 4) {
@@ -54,7 +54,7 @@ export function buildMaChamDiem(kyDanhGia: string, maThiDua: string): string {
         yearStr = parts[1];
       }
     }
-  } else if (kyDanhGia.length === 6) {
+  } else if (kyDanhGia && kyDanhGia.length === 6) {
     yearStr = kyDanhGia.slice(0, 4);
     monthStr = kyDanhGia.slice(4, 6);
   }
@@ -64,11 +64,13 @@ export function buildMaChamDiem(kyDanhGia: string, maThiDua: string): string {
 }
 
 /**
- * Standardize Evaluation Period string to "MM/YYYY" (e.g. "10/2026", "06/2026")
+ * Standardize Evaluation Period string to "MM/YYYY" (e.g. "07/2026", "10/2026")
  */
 export function formatKyDanhGia(month: number | string, year: number | string): string {
-  const m = parseInt(String(month), 10) || 10;
-  const y = parseInt(String(year), 10) || 2026;
+  const parsedM = parseInt(String(month), 10);
+  const m = (!isNaN(parsedM) && parsedM >= 1 && parsedM <= 12) ? parsedM : 1;
+  const parsedY = parseInt(String(year), 10);
+  const y = (!isNaN(parsedY) && parsedY >= 2020 && parsedY <= 2040) ? parsedY : 2026;
   const monthPad = String(m).padStart(2, '0');
   return `${monthPad}/${y}`;
 }

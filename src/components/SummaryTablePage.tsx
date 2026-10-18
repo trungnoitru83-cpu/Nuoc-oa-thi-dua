@@ -8,6 +8,7 @@ import { syncAllTeachersToGoogleSheet } from '../lib/googleSheetService';
 import { canViewSummary, getAuthorizedManager } from '../lib/authorizedManagers';
 import { calculateProgressStats, ProgressStatistics, TeacherProgressStatus } from '../utils/updateProgressHelper';
 import { RealtimeUpdateStatusModal } from './RealtimeUpdateStatusModal';
+import { deduplicateTeachers } from '../utils/formatTeacherId';
 
 interface SummaryTablePageProps {
   currentUser?: Teacher | null;
@@ -46,10 +47,15 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
   const [isSyncingGoogleSheet, setIsSyncingGoogleSheet] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
+  // 1 Viên chức - 1 Kỳ - 1 Dòng duy nhất (Lọc trùng tự động trên giao diện)
+  const cleanTeachers = useMemo(() => {
+    return deduplicateTeachers(teachers);
+  }, [teachers]);
+
   // Tính toán tiến độ cập nhật Mẫu 01, Mẫu 02, Mẫu 03 theo thời gian thực (Real-time)
   const progressStats = useMemo(() => {
-    return calculateProgressStats(teachers, evaluations, form01DataMap, selectedMonth, selectedYear);
-  }, [teachers, evaluations, form01DataMap, selectedMonth, selectedYear]);
+    return calculateProgressStats(cleanTeachers, evaluations, form01DataMap, selectedMonth, selectedYear);
+  }, [cleanTeachers, evaluations, form01DataMap, selectedMonth, selectedYear]);
 
   // Map nhanh tiến độ theo teacherId
   const progressMap = useMemo(() => {
@@ -75,9 +81,9 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
     let isMounted = true;
     const autoSync = async () => {
       try {
-        const res = await syncAllTeachersToGoogleSheet(teachers, evaluations, selectedMonth, selectedYear);
+        const res = await syncAllTeachersToGoogleSheet(cleanTeachers, evaluations, selectedMonth, selectedYear, currentUser, undefined, form01DataMap);
         if (isMounted && res.success) {
-          setSyncMessage(`File Tháng ${selectedMonth}/${selectedYear} đã tự động lưu trên Google Sheet (${res.successCount}/${teachers.length} cán bộ)`);
+          setSyncMessage(`File Tháng ${selectedMonth}/${selectedYear} đã tự động lưu trên Google Sheet (${res.successCount}/${cleanTeachers.length} cán bộ)`);
         }
       } catch (err) {
         console.warn('Lưu ngầm Google Sheet:', err);
@@ -93,12 +99,13 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
       isMounted = false;
       clearTimeout(timer);
     };
-  }, [selectedMonth, selectedYear, teachers.length, evaluations]);
+  }, [selectedMonth, selectedYear, cleanTeachers.length, evaluations]);
 
   const handleManualSyncGoogleSheet = async () => {
+    if (isSyncingGoogleSheet) return;
     setIsSyncingGoogleSheet(true);
     try {
-      const res = await syncAllTeachersToGoogleSheet(teachers, evaluations, selectedMonth, selectedYear);
+      const res = await syncAllTeachersToGoogleSheet(cleanTeachers, evaluations, selectedMonth, selectedYear, currentUser, undefined, form01DataMap);
       setSyncMessage(res.message);
       setTimeout(() => setSyncMessage(null), 5000);
     } catch (err) {
@@ -108,8 +115,8 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
     }
   };
 
-  // Filter teachers list
-  const filteredTeachers = teachers.filter((t) => {
+  // Filter teachers list (đã lọc trùng 1 viên chức - 1 dòng duy nhất)
+  const filteredTeachers = cleanTeachers.filter((t) => {
     const matchesSearch = t.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (t.position && t.position.toLowerCase().includes(searchTerm.toLowerCase())) ||
                           t.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -137,14 +144,14 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
     return matchesSearch && matchesDept && matchesClass && matchesProgress;
   });
 
-  // Calculate statistics across all teachers
+  // Calculate statistics across all teachers (deduplicated)
   let totalExcellent = 0; // >= 90
   let totalGood = 0;      // 80 - <90
   let totalPass = 0;      // 50 - <80
   let totalFail = 0;      // < 50
   let totalPointsSum = 0;
 
-  teachers.forEach((t) => {
+  cleanTeachers.forEach((t) => {
     const ev = getEval(t.id);
     const partA = ev ? Math.min(30, ev.totalPartA_Principal) : 30;
     const partB = ev ? Math.min(70, ev.totalPartB_Principal) : 60;
@@ -159,7 +166,7 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
     else totalFail++;
   });
 
-  const avgSchoolScore = teachers.length > 0 ? (totalPointsSum / teachers.length).toFixed(1) : '0';
+  const avgSchoolScore = cleanTeachers.length > 0 ? (totalPointsSum / cleanTeachers.length).toFixed(1) : '0';
 
   // Export to CSV / Excel helper with GV/NV self-assessment score
   const handleExportCSV = () => {
@@ -168,7 +175,7 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
     csvContent += `Trường PTDTNT THCS và THPT Nước Oa\n\n`;
     csvContent += `STT,Mã Thi Đua,Họ và tên cán bộ giáo viên,Chức vụ,Ngày sinh,Bộ môn,Tổ chuyên môn,Trường,Điểm GV/NV tự chấm,Điểm A (HT duyệt),Điểm B (HT duyệt),Điểm Cộng (+C),Điểm Trừ (-D),Tổng điểm Hiệu trưởng đánh giá,Xếp loại thi đua,Trạng thái\n`;
 
-    teachers.forEach((t, idx) => {
+    cleanTeachers.forEach((t, idx) => {
       const code = t.emulationCode || getTeacherEmulationCode(t, idx);
       const ev = getEval(t.id);
       const pos = t.position || t.subject;
@@ -201,13 +208,13 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
 
   // Export summary table to Word .doc format with GV/NV self-assessment score
   const handleExportWord = () => {
-    let html = `<div class="title">BẢNG TỔNG HỢP XẾP LOẠI THI ĐUA ${teachers.length} CÁN BỘ GIÁO VIÊN THÁNG ${selectedMonth}/${selectedYear}</div>`;
+    let html = `<div class="title">BẢNG TỔNG HỢP XẾP LOẠI THI ĐUA ${cleanTeachers.length} CÁN BỘ GIÁO VIÊN THÁNG ${selectedMonth}/${selectedYear}</div>`;
     html += `<div class="subtitle">Trường PTDTNT THCS và THPT Nước Oa</div>`;
     html += `<table><thead><tr>
       <th>STT</th><th>Họ và tên</th><th>Chức vụ</th><th>Bộ môn</th><th>Tổ chuyên môn</th><th>Điểm GV tự chấm</th><th>Điểm A</th><th>Điểm B</th><th>Điểm Cộng</th><th>Điểm Trừ</th><th>Tổng điểm HT</th><th>Xếp loại</th>
     </tr></thead><tbody>`;
 
-    teachers.forEach((t, idx) => {
+    cleanTeachers.forEach((t, idx) => {
       const ev = getEval(t.id);
       const pos = t.position || t.subject;
       const tPartA = ev ? Math.min(30, ev.totalPartA_Teacher ?? 30) : 30;
@@ -300,7 +307,7 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
             )}
           </div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-white">
-            Bảng Tổng Hợp Xếp Loại Thi Đua {teachers.length} Cán Bộ Giáo Viên
+            Bảng Tổng Hợp Xếp Loại Thi Đua {cleanTeachers.length} Cán Bộ Giáo Viên
           </h1>
           <p className="text-xs text-slate-500">
             Trường PTDTNT THCS và THPT Nước Oa. Tự động lưu file Tháng {selectedMonth}/{selectedYear} trên Google Sheet và cập nhật điểm đánh giá theo thời gian thực.
@@ -321,7 +328,7 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
             </span>
             <Bell className="w-4 h-4 text-amber-300 animate-pulse shrink-0" />
             <span>
-              Thông báo: <strong className="text-amber-200">{progressStats.totalUpdatedAny}/{teachers.length}</strong> đã cập nhật (01/02/03)
+              Thông báo: <strong className="text-amber-200">{progressStats.totalUpdatedAny}/{cleanTeachers.length}</strong> đã cập nhật (01/02/03)
             </span>
           </button>
 
@@ -336,7 +343,7 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
             className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs rounded-2xl transition shadow-sm cursor-pointer"
           >
             <UserPlus className="w-4 h-4 text-amber-300" />
-            <span>Quản lý {teachers.length} CBGV</span>
+            <span>Quản lý {cleanTeachers.length} CBGV</span>
           </button>
 
           <button
@@ -346,7 +353,7 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
             title="Quét tất cả bản ghi đã lưu trên Firestore và đẩy bổ sung đầy đủ sang Google Sheet"
           >
             <RefreshCw className={`w-4 h-4 ${isSyncingGoogleSheet ? 'animate-spin' : ''}`} />
-            <span>{isSyncingGoogleSheet ? 'Đang đồng bộ dữ liệu...' : 'Đồng bộ toàn bộ dữ liệu lên Google Sheet'}</span>
+            <span>{isSyncingGoogleSheet ? 'Đang lưu dữ liệu...' : 'Đồng bộ toàn bộ dữ liệu lên Google Sheet'}</span>
           </button>
 
           <button
@@ -1031,8 +1038,8 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
         </div>
 
         <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500 flex items-center justify-between">
-          <span>Hiển thị {filteredTeachers.length} trên tổng số {teachers.length} giáo viên</span>
-          <span>Cập nhật mới nhất: Tháng {selectedMonth}/2026 (Tự động lưu file Tháng {selectedMonth} trên Google Sheet)</span>
+          <span>Hiển thị {filteredTeachers.length} trên tổng số {cleanTeachers.length} cán bộ giáo viên (đã lọc trùng)</span>
+          <span>Cập nhật mới nhất: Tháng {selectedMonth}/{selectedYear} (Tự động lưu file Tháng {selectedMonth}/{selectedYear} trên Google Sheet)</span>
         </div>
       </div>
 

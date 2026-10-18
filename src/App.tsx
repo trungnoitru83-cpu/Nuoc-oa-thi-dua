@@ -22,7 +22,8 @@ import {
   saveEntryStatusToFirestore
 } from './lib/firebaseService';
 import {
-  saveEvaluationToGoogleSheet
+  saveEvaluationToGoogleSheet,
+  saveCombinedDataToGoogleSheet
 } from './lib/googleSheetService';
 export default function App() {
   // Theme State
@@ -295,11 +296,14 @@ export default function App() {
       evalData
     );
 
-    // 2. Đồng thời lưu vào Google Sheet
+    // 2. Đồng thời lưu vào Google Sheet (Gộp Mẫu 01 + Mẫu 02/03)
     const targetTeacher = teachers.find(t => t.id === evalData.teacherId) || selectedTeacher || currentUser;
     if (targetTeacher || currentUser) {
-      const result = await saveEvaluationToGoogleSheet(
+      const f01Key = `${evalData.teacherId}_y${selectedYear}_m${evalData.month}`;
+      const f01 = form01Data[f01Key] || form01Data[`${evalData.teacherId}_m${evalData.month}`] || createDefaultForm01(evalData.teacherId, evalData.month, selectedYear);
+      const result = await saveCombinedDataToGoogleSheet(
         targetTeacher || currentUser!,
+        f01,
         evalData,
         selectedMonth,
         selectedYear,
@@ -311,6 +315,7 @@ export default function App() {
       } else {
         console.log('Đã lưu Google Sheet thành công cho teacherId:', result.maChamDiem);
       }
+      return result;
     }
   };
 
@@ -421,6 +426,7 @@ export default function App() {
             currentTeacher={selectedTeacher}
             onSelectTeacher={(t) => setSelectedTeacher(t)}
             evaluation={currentEvaluation}
+            form01={currentForm01}
             selectedMonth={selectedMonth}
             selectedYear={selectedYear}
             currentRole={currentRole}

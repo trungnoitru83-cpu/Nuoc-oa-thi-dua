@@ -459,10 +459,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6">
 
-      {/* Header Banner */}
-      <div className="bg-theme-gradient text-white rounded-3xl p-6 sm:p-8 shadow-xl mb-8 border border-white/20 relative overflow-hidden text-center sm:text-left">
-        <div className="absolute -right-10 -top-10 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-
+      {/* Header Banner (Ẩn hoàn toàn theo yêu cầu người dùng: 'ẩn logo này luôn') */}
+      <div className="hidden" aria-hidden="true">
         <div className="relative z-10 pr-0 sm:pr-44">
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
             Phần Mềm Chấm Thi Đua Hàng Tháng
@@ -471,15 +469,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             Đăng nhập bằng <strong>Mã Thi Đua</strong>, Email cán bộ hoặc tài khoản được phân quyền.
           </p>
         </div>
+      </div>
 
-        {/* Nút Xem danh sách và thêm mới thu gọn nhỏ lại xuống góc bên phải của khung */}
+      {/* Nút Xem danh sách và thêm mới */}
+      <div className="max-w-xl mx-auto flex justify-end mb-3">
         <button
           type="button"
           onClick={handleOpen36CodesModal}
-          className="absolute bottom-2.5 right-2.5 sm:bottom-3.5 sm:right-4 z-20 flex items-center gap-1 px-2.5 py-1 bg-white/95 hover:bg-white text-slate-800 dark:bg-slate-800 dark:text-white font-bold text-[10px] sm:text-[11px] rounded-lg shadow-sm border border-white/40 transition shrink-0 cursor-pointer active:scale-95 hover:shadow"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700 font-bold text-xs rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 transition shrink-0 cursor-pointer active:scale-95 hover:shadow"
           title="Danh mục mã thi đua - Xem danh sách & thêm mới"
         >
-          <ListOrdered className="w-3 h-3 text-amber-500 shrink-0" />
+          <ListOrdered className="w-3.5 h-3.5 text-amber-500 shrink-0" />
           <span>Xem danh sách &amp; thêm mới</span>
         </button>
       </div>

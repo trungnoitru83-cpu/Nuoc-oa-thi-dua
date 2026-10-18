@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { FileSpreadsheet, CheckSquare, ShieldCheck, PenTool, Printer, Save, ChevronLeft, ChevronRight, User, AlertCircle, ArrowRight, CheckCircle, RefreshCw, FileText } from 'lucide-react';
-import { Teacher, Form03Evaluation, Role, CriteriaScore, CriteriaItem } from '../types';
+import { Teacher, Form03Evaluation, Form01Data, Role, CriteriaScore, CriteriaItem } from '../types';
 import { FORM_03_CRITERIA, CLASSIFICATION_RULES, getClassification, getClassificationLabel, getCriteriaForTeacher, isLeaderTeacher } from '../data/form03Criteria';
 import { getTeacherEmulationCode } from '../data/mockTeachers';
 import { SignatureModal } from './SignatureModal';
 import { exportToWord, exportForm03ToWord } from '../lib/wordExport';
-import { validateAndBuildDiemPayload } from '../lib/googleSheetService';
+import { buildCombinedGoogleSheetPayload, validateAndBuildDiemPayload } from '../lib/googleSheetService';
 
 interface Form03PageProps {
   currentUser?: Teacher | null;
@@ -13,10 +13,11 @@ interface Form03PageProps {
   currentTeacher: Teacher;
   onSelectTeacher: (teacher: Teacher) => void;
   evaluation: Form03Evaluation;
+  form01?: Form01Data;
   selectedMonth: number;
   selectedYear?: number;
   currentRole: Role;
-  onSaveEvaluation: (evalData: Form03Evaluation) => void;
+  onSaveEvaluation: (evalData: Form03Evaluation) => Promise<any> | void;
   onOpenPrintModal: (type: 'form03', teacherId: string) => void;
   onNavigateToSummary: () => void;
 }
@@ -119,6 +120,7 @@ export const Form03Page: React.FC<Form03PageProps> = ({
 
   const [saveToast, setSaveToast] = useState(false);
   const [saveToastMsg, setSaveToastMsg] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<'teacher' | 'principal' | null>(
     evaluation.status === 'approved' ? 'principal' : evaluation.status === 'submitted' ? 'teacher' : null
   );
@@ -256,7 +258,9 @@ export const Form03Page: React.FC<Form03PageProps> = ({
   const formattedMonth = selectedMonth < 10 ? `0${selectedMonth}` : `${selectedMonth}`;
 
   // Save changes & update summary file for 36 teachers
-  const handleSave = (newStatus?: 'submitted' | 'approved' | 'rejected', customMsg?: string) => {
+  const handleSave = async (newStatus?: 'submitted' | 'approved' | 'rejected', customMsg?: string) => {
+    if (isSaving) return;
+    setIsSaving(true);
     const finalStatus = newStatus || status;
     const updatedEval: Form03Evaluation = {
       ...evaluation,
@@ -283,28 +287,24 @@ export const Form03Page: React.FC<Form03PageProps> = ({
       updatedAt: new Date().toISOString()
     };
 
-    // Validation check before saving using currentTeacher & currentUser
-    const val = validateAndBuildDiemPayload(currentTeacher, updatedEval, selectedMonth, selectedYear, currentUser);
-    if (!val.isValid) {
-      alert(val.errorMessage || 'Lỗi: Không tìm thấy thông tin hợp lệ của người dùng!');
-      return;
+    try {
+      await onSaveEvaluation(updatedEval);
+      if (newStatus) setStatus(newStatus);
+
+      if (finalStatus === 'approved') {
+        setLastUpdated('principal');
+      } else {
+        setLastUpdated('teacher');
+      }
+
+      setSaveToastMsg(finalStatus === 'approved' ? 'Đã cập nhật trạng thái [Đã duyệt] chính thức vào Google Sheet thành công!' : (customMsg || `✅ Đã cập nhật điểm Giáo viên tự chấm (${grandTotal_Teacher} điểm)!`));
+      setSaveToast(true);
+      setTimeout(() => setSaveToast(false), 5000);
+    } catch (err: any) {
+      console.warn('Lỗi khi lưu Form03:', err);
+    } finally {
+      setIsSaving(false);
     }
-
-    onSaveEvaluation(updatedEval);
-    if (newStatus) setStatus(newStatus);
-
-    if (finalStatus === 'approved') {
-      setLastUpdated('principal');
-      alert('Đã cập nhật trạng thái [Đã duyệt] chính thức vào Google Sheet thành công!');
-    } else {
-      setLastUpdated('teacher');
-      const defaultMsg = customMsg || `✅ Đã cập nhật điểm Giáo viên tự chấm (${grandTotal_Teacher} điểm) và lưu trực tiếp lên Google Sheet [${val.payload?.maChamDiem}]!`;
-      alert(defaultMsg);
-    }
-
-    setSaveToastMsg(finalStatus === 'approved' ? 'Đã cập nhật trạng thái [Đã duyệt] chính thức vào Google Sheet thành công!' : (customMsg || `✅ Đã cập nhật điểm Giáo viên tự chấm (${grandTotal_Teacher} điểm)!`));
-    setSaveToast(true);
-    setTimeout(() => setSaveToast(false), 5000);
   };
 
   // Teacher navigation indexing
@@ -493,20 +493,40 @@ export const Form03Page: React.FC<Form03PageProps> = ({
 
             <div className="flex items-center gap-2">
               <button
+                disabled={isSaving}
                 onClick={() => handleSave('submitted', `✅ Đã cập nhật điểm Giáo viên tự chấm (${grandTotal_Teacher} điểm: A=${partA_Teacher}, B=${partB_Teacher}, +C=${bonus_Teacher}, -D=${deduction_Teacher}) vào File tổng hợp ${teachers.length} Giáo viên!`)}
-                className="px-3.5 py-2 bg-blue-700 hover:bg-blue-800 text-white font-black text-xs rounded-xl transition flex items-center gap-1.5 shadow-md cursor-pointer"
+                className="px-3.5 py-2 bg-blue-700 hover:bg-blue-800 text-white font-black text-xs rounded-xl transition flex items-center gap-1.5 shadow-md cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 title="Bấm để cập nhật điểm tự chấm của Giáo viên vào File Tổng hợp"
               >
-                <CheckSquare className="w-3.5 h-3.5 text-amber-300" />
-                <span>Cập nhật điểm GV</span>
+                {isSaving ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                    <span>Đang lưu dữ liệu...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckSquare className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Cập nhật điểm GV</span>
+                  </>
+                )}
               </button>
               <button
+                disabled={isSaving}
                 onClick={() => handleSave('approved', `✅ Đã cập nhật điểm Hiệu trưởng đánh giá (${grandTotal_Principal} điểm: A=${partA_Principal}, B=${partB_Principal}, +C=${bonus_Principal}, -D=${deduction_Principal}) vào File tổng hợp ${teachers.length} Giáo viên!`)}
-                className="px-3.5 py-2 bg-[#78350f] hover:bg-[#58260b] text-white font-black text-xs rounded-xl transition flex items-center gap-1.5 shadow-md cursor-pointer"
+                className="px-3.5 py-2 bg-[#78350f] hover:bg-[#58260b] text-white font-black text-xs rounded-xl transition flex items-center gap-1.5 shadow-md cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 title="Bấm để Hiệu trưởng phê duyệt & cập nhật điểm vào File Tổng hợp"
               >
-                <ShieldCheck className="w-3.5 h-3.5 text-amber-200" />
-                <span>Cập nhật điểm HT</span>
+                {isSaving ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                    <span>Đang lưu dữ liệu...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-200" />
+                    <span>Cập nhật điểm HT</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -1131,7 +1151,7 @@ export const Form03Page: React.FC<Form03PageProps> = ({
             </div>
             <div>
               <p className="text-xs font-black text-slate-950 dark:text-white uppercase tracking-wide flex items-center gap-2">
-                <span>CẬP NHẬT ĐIỂM TỰ ĐÁNH GIÁ VÀO FILE TỔNG HỢP {teachers.length} GIÁO VIÊN (THÁNG {selectedMonth}/2026)</span>
+                <span>CẬP NHẬT ĐIỂM TỰ ĐÁNH GIÁ VÀO FILE TỔNG HỢP {teachers.length} GIÁO VIÊN (THÁNG {selectedMonth}/{selectedYear})</span>
                 {saveToast && (
                   <span className="px-2 py-0.5 text-[10px] font-black bg-emerald-500 text-white rounded-md animate-ping">
                     ĐANG ĐỒNG BỘ...
@@ -1147,28 +1167,30 @@ export const Form03Page: React.FC<Form03PageProps> = ({
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto shrink-0">
             {/* Nút Cập nhật điểm Giáo viên tự chấm: MÀU XANH */}
             <button
+              disabled={isSaving}
               onClick={() => handleSave('submitted', `✅ Đã cập nhật điểm Giáo viên tự chấm (${grandTotal_Teacher} điểm) và lưu vào File tổng hợp ${teachers.length} Giáo viên!`)}
-              className={`px-5 py-3 font-black text-xs rounded-xl shadow-lg transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
+              className={`px-5 py-3 font-black text-xs rounded-xl shadow-lg transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                 lastUpdated === 'teacher' && saveToast
                   ? 'bg-gradient-to-r from-blue-600 via-emerald-600 to-emerald-500 text-white ring-4 ring-emerald-300 shadow-xl shadow-emerald-500/50 scale-105 animate-pulse'
                   : 'bg-blue-700 hover:bg-blue-800 text-white'
               }`}
             >
-              <CheckSquare className="w-4 h-4 text-amber-300 shrink-0" />
-              <span>{lastUpdated === 'teacher' && saveToast ? '✨ ĐÃ CẬP NHẬT ĐIỂM GV TỰ CHẤM!' : `CẬP NHẬT ĐIỂM GV TỰ CHẤM (${grandTotal_Teacher} ĐIỂM)`}</span>
+              <RefreshCw className={`w-4 h-4 text-amber-300 shrink-0 ${isSaving ? 'animate-spin' : ''}`} />
+              <span>{isSaving ? 'Đang lưu dữ liệu...' : lastUpdated === 'teacher' && saveToast ? '✨ ĐÃ CẬP NHẬT ĐIỂM GV TỰ CHẤM!' : `CẬP NHẬT ĐIỂM GV TỰ CHẤM (${grandTotal_Teacher} ĐIỂM)`}</span>
             </button>
 
             {/* Nút Cập nhật điểm Hiệu trưởng đánh giá: MÀU NÂU */}
             <button
+              disabled={isSaving}
               onClick={() => handleSave('approved', `✅ Đã cập nhật điểm Hiệu trưởng đánh giá (${grandTotal_Principal} điểm) và phê duyệt lưu vào File tổng hợp ${teachers.length} Giáo viên!`)}
-              className={`px-5 py-3 font-black text-xs rounded-xl shadow-lg transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
+              className={`px-5 py-3 font-black text-xs rounded-xl shadow-lg transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                 (lastUpdated === 'principal' || status === 'approved') && saveToast
                   ? 'bg-gradient-to-r from-amber-600 via-amber-700 to-[#78350f] text-white ring-4 ring-amber-300 shadow-xl shadow-amber-500/50 scale-105 animate-pulse'
                   : 'bg-[#78350f] hover:bg-[#58260b] text-white'
               }`}
             >
-              <ShieldCheck className="w-4 h-4 text-amber-200 shrink-0" />
-              <span>{(lastUpdated === 'principal' || status === 'approved') && saveToast ? '✨ ĐÃ CẬP NHẬT ĐIỂM HT DUYỆT!' : `CẬP NHẬT ĐIỂM HIỆU TRƯỜNG DUYỆT (${grandTotal_Principal} ĐIỂM)`}</span>
+              <RefreshCw className={`w-4 h-4 text-amber-200 shrink-0 ${isSaving ? 'animate-spin' : ''}`} />
+              <span>{isSaving ? 'Đang lưu dữ liệu...' : (lastUpdated === 'principal' || status === 'approved') && saveToast ? '✨ ĐÃ CẬP NHẬT ĐIỂM HT DUYỆT!' : `CẬP NHẬT ĐIỂM HIỆU TRƯỜNG DUYỆT (${grandTotal_Principal} ĐIỂM)`}</span>
             </button>
           </div>
         </div>
@@ -1210,15 +1232,16 @@ export const Form03Page: React.FC<Form03PageProps> = ({
 
               {/* Nút GV cập nhật: MÀU XANH */}
               <button
+                disabled={isSaving}
                 onClick={() => handleSave('submitted', `✅ Đã cập nhật điểm Giáo viên tự chấm (${grandTotal_Teacher} điểm) vào File tổng hợp ${teachers.length} Giáo viên!`)}
-                className={`w-full mt-4 px-3 py-2.5 font-black text-xs rounded-xl shadow transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer ${
+                className={`w-full mt-4 px-3 py-2.5 font-black text-xs rounded-xl shadow transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                   lastUpdated === 'teacher' && saveToast
                     ? 'bg-emerald-600 text-white ring-2 ring-emerald-300 shadow-md shadow-emerald-500/40'
                     : 'bg-blue-700 hover:bg-blue-800 text-white'
                 }`}
               >
-                <Save className="w-4 h-4 text-amber-300" />
-                <span>{lastUpdated === 'teacher' && saveToast ? '✨ Đã lưu điểm GV tự chấm sang File tổng hợp!' : `Cập nhật điểm GV tự chấm (${grandTotal_Teacher}đ) -> File tổng hợp`}</span>
+                <RefreshCw className={`w-4 h-4 text-amber-300 ${isSaving ? 'animate-spin' : ''}`} />
+                <span>{isSaving ? 'Đang lưu dữ liệu...' : lastUpdated === 'teacher' && saveToast ? '✨ Đã lưu điểm GV tự chấm sang File tổng hợp!' : `Cập nhật điểm GV tự chấm (${grandTotal_Teacher}đ) -> File tổng hợp`}</span>
               </button>
             </div>
 
@@ -1255,15 +1278,16 @@ export const Form03Page: React.FC<Form03PageProps> = ({
 
               {/* Nút HT cập nhật: MÀU NÂU */}
               <button
+                disabled={isSaving}
                 onClick={() => handleSave('approved', `✅ Đã cập nhật điểm Hiệu trưởng đánh giá (${grandTotal_Principal} điểm) vào File tổng hợp ${teachers.length} Giáo viên!`)}
-                className={`w-full mt-4 px-3 py-2.5 font-black text-xs rounded-xl shadow transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer ${
+                className={`w-full mt-4 px-3 py-2.5 font-black text-xs rounded-xl shadow transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                   (lastUpdated === 'principal' || status === 'approved') && saveToast
                     ? 'bg-amber-800 text-white ring-2 ring-amber-300 shadow-md shadow-amber-600/40'
                     : 'bg-[#78350f] hover:bg-[#58260b] text-white'
                 }`}
               >
-                <ShieldCheck className="w-4 h-4 text-amber-200" />
-                <span>{(lastUpdated === 'principal' || status === 'approved') && saveToast ? '✨ Đã lưu điểm HT duyệt sang File tổng hợp!' : `Cập nhật điểm Hiệu trưởng duyệt (${grandTotal_Principal}đ) -> File tổng hợp`}</span>
+                <RefreshCw className={`w-4 h-4 text-amber-200 ${isSaving ? 'animate-spin' : ''}`} />
+                <span>{isSaving ? 'Đang lưu dữ liệu...' : (lastUpdated === 'principal' || status === 'approved') && saveToast ? '✨ Đã lưu điểm HT duyệt sang File tổng hợp!' : `Cập nhật điểm Hiệu trưởng duyệt (${grandTotal_Principal}đ) -> File tổng hợp`}</span>
               </button>
             </div>
 
@@ -1307,7 +1331,7 @@ export const Form03Page: React.FC<Form03PageProps> = ({
             {teacherSigImg ? (
               <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 my-2">
                 <img src={teacherSigImg} alt="Chữ ký giáo viên" className="h-20 mx-auto object-contain" />
-                <p className="text-[10px] text-slate-400 mt-1">Đã ký vào ngày {evaluation.teacherSignatureDate || `28/0${selectedMonth}/2026`}</p>
+                <p className="text-[10px] text-slate-400 mt-1">Đã ký vào ngày {evaluation.teacherSignatureDate || `28/${formattedMonth}/${selectedYear}`}</p>
               </div>
             ) : (
               <div className="h-24 my-2 border-2 border-dashed border-blue-300 dark:border-blue-700 rounded-xl flex items-center justify-center text-slate-400 text-xs">
@@ -1335,7 +1359,7 @@ export const Form03Page: React.FC<Form03PageProps> = ({
             {principalSigImg ? (
               <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 my-2">
                 <img src={principalSigImg} alt="Chữ ký Hiệu trưởng" className="h-20 mx-auto object-contain" />
-                <p className="text-[10px] text-slate-400 mt-1">Hiệu trưởng đã ký ngày {evaluation.principalSignatureDate || `30/0${selectedMonth}/2026`}</p>
+                <p className="text-[10px] text-slate-400 mt-1">Hiệu trưởng đã ký ngày {evaluation.principalSignatureDate || `30/${formattedMonth}/${selectedYear}`}</p>
               </div>
             ) : (
               <div className="h-24 my-2 border-2 border-dashed border-amber-300 dark:border-amber-700 rounded-xl flex items-center justify-center text-slate-400 text-xs">
@@ -1380,14 +1404,20 @@ export const Form03Page: React.FC<Form03PageProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           {/* Giáo viên Lưu: MÀU XANH */}
           <button
+            disabled={isSaving}
             onClick={() => handleSave('submitted')}
-            className={`px-4 py-3 font-black text-xs rounded-xl shadow-lg transition-all duration-300 flex items-center gap-1.5 cursor-pointer ${
+            className={`px-4 py-3 font-black text-xs rounded-xl shadow-lg transition-all duration-300 flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
               saveToast && lastUpdated === 'teacher'
                 ? 'bg-gradient-to-r from-blue-700 to-emerald-600 ring-4 ring-emerald-300 text-white animate-pulse shadow-xl shadow-emerald-500/40 scale-105'
                 : 'bg-blue-700 hover:bg-blue-800 text-white'
             }`}
           >
-            {saveToast && lastUpdated === 'teacher' ? (
+            {isSaving ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                <span>Đang lưu dữ liệu...</span>
+              </>
+            ) : saveToast && lastUpdated === 'teacher' ? (
               <>
                 <CheckCircle className="w-4 h-4 text-white" />
                 <span>✨ ĐÃ CẬP NHẬT ĐIỂM GV TỰ CHẤM!</span>
@@ -1402,14 +1432,20 @@ export const Form03Page: React.FC<Form03PageProps> = ({
 
           {/* Hiệu trưởng Duyệt: MÀU NÂU */}
           <button
+            disabled={isSaving}
             onClick={() => handleSave('approved')}
-            className={`px-5 py-3 font-black text-xs rounded-xl shadow-lg transition-all duration-300 flex items-center gap-1.5 cursor-pointer ${
+            className={`px-5 py-3 font-black text-xs rounded-xl shadow-lg transition-all duration-300 flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
               saveToast && (lastUpdated === 'principal' || status === 'approved')
                 ? 'bg-gradient-to-r from-amber-600 via-amber-700 to-[#58260b] ring-4 ring-amber-300 text-white animate-pulse shadow-xl shadow-amber-500/50 scale-105'
                 : 'bg-[#78350f] hover:bg-[#58260b] text-white'
             }`}
           >
-            {saveToast && (lastUpdated === 'principal' || status === 'approved') ? (
+            {isSaving ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                <span>Đang lưu dữ liệu...</span>
+              </>
+            ) : saveToast && (lastUpdated === 'principal' || status === 'approved') ? (
               <>
                 <CheckCircle className="w-4 h-4 text-white" />
                 <span>✨ ĐÃ DUYỆT CHÍNH THỨC!</span>

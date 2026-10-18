@@ -4,7 +4,7 @@ import { Teacher, Form01Data, Form01Task, Form03Evaluation, Role } from '../type
 import { isLeaderTeacher } from '../data/form03Criteria';
 import { getTeacherEmulationCode } from '../data/mockTeachers';
 import { exportForm01ToWord, exportForm01ToPdfPrint } from '../utils/exportDecree30';
-import { saveForm01ToGoogleSheet, saveEvaluationToGoogleSheet, fetchForm01FromGoogleSheet } from '../lib/googleSheetService';
+import { saveForm01ToGoogleSheet, saveEvaluationToGoogleSheet, saveCombinedDataToGoogleSheet, fetchForm01FromGoogleSheet } from '../lib/googleSheetService';
 import { formatTeacherId } from '../utils/formatTeacherId';
 import { canSignForm01, canViewSummary, getAuthorizedManager, AUTHORIZED_MANAGERS } from '../lib/authorizedManagers';
 
@@ -595,46 +595,35 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
     };
     onUpdateForm01(updatedForm01);
 
-    // Toast notice immediately
-    alert('⏳ Đang gửi dữ liệu Mẫu 01 sang Google Sheet...');
-
     try {
-      // 4. Post Mẫu 01 data to Google Sheet Web App API
-      const resForm01 = await saveForm01ToGoogleSheet(
+      // 4. Post combined data (Mẫu 01 + Mẫu 02/03) to Google Sheet Web App API
+      const res = await saveCombinedDataToGoogleSheet(
         updatedTeacher,
         updatedForm01,
+        evaluation,
         selectedMonth,
         selectedYear,
         currentUser || teacher
       );
 
-      // 5. Optionally sync evaluation scores if evaluation exists
-      if (evaluation) {
-        await saveEvaluationToGoogleSheet(
-          updatedTeacher,
-          evaluation,
-          selectedMonth,
-          selectedYear,
-          currentUser || teacher
-        );
-      }
-
-      if (resForm01.success) {
+      if (res.success) {
         setSavedSuccess(true);
         setTimeout(() => setSavedSuccess(false), 5000);
-        alert('Đã gửi dữ liệu Mẫu 01 vào Google Sheet thành công! Vui lòng tải lại trang Google Sheet.');
       } else {
-        alert(`❌ [LỖI LƯU MẪU 01 LÊN GOOGLE SHEET]\n\n• Nguyên nhân: ${resForm01.message}`);
+        console.warn('Google Sheet Save Warning:', res.message);
       }
     } catch (err: any) {
       console.warn('❌ Exception in handleSaveProfile:', err);
-      alert(`❌ [LỖI KẾT NỐI MÁY CHỦ GOOGLE SHEET]\n\n• Chi tiết: ${err?.message || 'Không thể kết nối API Web App'}`);
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveMau01 = executeSaveProfile;
+  const handleSaveMau01 = async (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    if (isSaving) return;
+    await executeSaveProfile();
+  };
 
   const handleAddTask = () => {
     const newTask: Form01Task = {
@@ -759,7 +748,7 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
                 ✅ ĐÃ LƯU MẪU 01 THÀNH CÔNG!
               </p>
               <p className="text-xs text-emerald-700 dark:text-emerald-300 font-medium">
-                Dữ liệu hồ sơ & đính kèm minh chứng Mẫu 01 tháng {selectedMonth}/2026 đã được lưu an toàn lên đám mây Firebase.
+                Dữ liệu hồ sơ & đính kèm minh chứng Mẫu 01 tháng {selectedMonth}/{selectedYear} đã được lưu an toàn lên đám mây Firebase.
               </p>
             </div>
           </div>
@@ -865,7 +854,7 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
                   className="w-full pl-10 pr-4 py-2.5 bg-blue-50/50 dark:bg-blue-950/40 border border-blue-300 dark:border-blue-700 rounded-xl text-sm font-extrabold text-blue-900 dark:text-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-600 cursor-pointer"
                 />
               </div>
-              <p className="text-[10px] text-slate-500 mt-1">Chu kỳ Tháng {selectedMonth}/2026 đính kèm lịch lưu lâu dài</p>
+              <p className="text-[10px] text-slate-500 mt-1">Chu kỳ Tháng {selectedMonth}/{selectedYear} đính kèm lịch lưu lâu dài</p>
             </div>
 
             {/* Họ và tên */}
@@ -1013,6 +1002,18 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
             <div className="flex flex-wrap items-center gap-2">
 
 
+              {/* Nút Lưu & Đồng bộ Mẫu 01 lên Sheet (theo yêu cầu người dùng) */}
+              <button
+                type="button"
+                onClick={handleSaveMau01}
+                disabled={isSaving}
+                className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                title="Lưu và đồng bộ toàn bộ nhiệm vụ Mẫu 01 và điểm đánh giá lên Google Sheet"
+              >
+                <RefreshCw className={`w-4 h-4 text-emerald-200 ${isSaving ? 'animate-spin' : ''}`} />
+                <span>{isSaving ? 'Đang lưu dữ liệu...' : 'Lưu & Đồng bộ Mẫu 01 lên Sheet'}</span>
+              </button>
+
               {/* Export Decree 30 Buttons */}
               <button
                 type="button"
@@ -1045,8 +1046,6 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
             </button>
           </div>
 
-
-
           {/* Visual Mẫu 01 Spreadsheet View (như Bảng Mẫu Ảnh) */}
           {showVisualSheetPreview && (
             <div className="mb-8 bg-emerald-900/5 dark:bg-slate-800/50 p-6 rounded-3xl border-2 border-emerald-500/30 dark:border-slate-700 shadow-inner">
@@ -1059,6 +1058,17 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
                   </span>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveMau01}
+                      disabled={isSaving}
+                      className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold text-[11px] rounded-lg shadow-xs transition flex items-center gap-1 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                      title="Lưu và đồng bộ Mẫu 01 lên Google Sheet"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 text-emerald-200 ${isSaving ? 'animate-spin' : ''}`} />
+                      <span>{isSaving ? 'Đang lưu dữ liệu...' : 'Lưu & Đồng bộ Mẫu 01 lên Sheet'}</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={handleExportWord}
@@ -1733,7 +1743,7 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
               {isSaving ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                  <span>Đang gửi sang Google Sheet...</span>
+                  <span>Đang lưu dữ liệu...</span>
                 </>
               ) : savedSuccess ? (
                 <>
@@ -1954,11 +1964,21 @@ export const TeacherProfilePage: React.FC<TeacherProfilePageProps> = ({
 
                 <button
                   type="button"
+                  disabled={isSaving}
                   onClick={executeSaveProfile}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center gap-2 cursor-pointer"
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <Send className="w-4 h-4" />
-                  <span>XÁC NHẬN GHI VÀO GOOGLE SHEET</span>
+                  {isSaving ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                      <span>Đang lưu dữ liệu...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>XÁC NHẬN GHI VÀO GOOGLE SHEET</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
