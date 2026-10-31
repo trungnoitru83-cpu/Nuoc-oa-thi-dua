@@ -203,19 +203,35 @@ export default function App() {
 
   // Save to LocalStorage
   useEffect(() => {
-    localStorage.setItem('nuocoa_teachers', JSON.stringify(teachers));
+    try {
+      localStorage.setItem('nuocoa_teachers', JSON.stringify(teachers));
+    } catch (e) {
+      console.warn('Lỗi lưu teachers vào cache:', e);
+    }
   }, [teachers]);
 
   useEffect(() => {
-    localStorage.setItem('nuocoa_form01', JSON.stringify(form01Data));
+    try {
+      localStorage.setItem('nuocoa_form01', JSON.stringify(form01Data));
+    } catch (e) {
+      console.warn('Lỗi lưu form01Data vào cache:', e);
+    }
   }, [form01Data]);
 
   useEffect(() => {
-    localStorage.setItem('nuocoa_evaluations', JSON.stringify(evaluations));
+    try {
+      localStorage.setItem('nuocoa_evaluations', JSON.stringify(evaluations));
+    } catch (e) {
+      console.warn('Dữ liệu evaluations vượt giới hạn 5MB, bỏ qua lưu cache:', e);
+    }
   }, [evaluations]);
 
   useEffect(() => {
-    localStorage.setItem('nuocoa_entry_statuses', JSON.stringify(entryStatuses));
+    try {
+      localStorage.setItem('nuocoa_entry_statuses', JSON.stringify(entryStatuses));
+    } catch (e) {
+      console.warn('Lỗi lưu entryStatuses vào cache:', e);
+    }
   }, [entryStatuses]);
 
   // Handle Mark Entry Status ("Báo đã nhập")
