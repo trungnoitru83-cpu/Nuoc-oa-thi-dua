@@ -54,21 +54,20 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between min-h-16 py-2 gap-2 sm:gap-4">
           
-          {/* Logo / Title - Bấm để về Giao diện Đăng Nhập */}
+          {/* Logo / Title - Ẩn theo yêu cầu người dùng ("ẩn luôn nút thi đua nước oa") */}
           <div
-            onClick={() => setActiveTab('login')}
-            className="flex items-center gap-2.5 cursor-pointer select-none group"
-            title="Về Giao diện Đăng Nhập"
+            className="hidden"
+            aria-hidden="true"
           >
             <div
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-white shadow-md transition-all shrink-0 group-hover:scale-105"
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-white shadow-md transition-all shrink-0"
               style={{ backgroundColor: themeOpt.dotColor }}
             >
               <Award className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2">
-                <span className="font-black text-sm sm:text-base md:text-lg text-slate-900 dark:text-white tracking-tight leading-none whitespace-nowrap group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                <span className="font-black text-sm sm:text-base md:text-lg text-slate-900 dark:text-white tracking-tight leading-none whitespace-nowrap">
                   THI ĐUA NƯỚC OA
                 </span>
                 <span className={`px-2 py-0.5 text-[10px] font-black rounded-full border ${themeOpt.accentBg} ${themeOpt.accentText} ${themeOpt.accentBorder} shrink-0`}>

@@ -388,22 +388,24 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-100/70 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
       
-      {/* Top Navbar */}
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        currentUser={currentUser}
-        currentRole={currentRole}
-        selectedMonth={selectedMonth}
-        setSelectedMonth={setSelectedMonth}
-        selectedYear={selectedYear}
-        setSelectedYear={setSelectedYear}
-        onLogout={handleLogout}
-        teacherCount={teachers.length}
-        themeConfig={themeConfig}
-        onOpenThemeModal={() => setIsThemeModalOpen(true)}
-        onToggleDarkMode={handleToggleDarkMode}
-      />
+      {/* Top Navbar - Chỉ hiển thị khi đã đăng nhập */}
+      {currentUser && activeTab !== 'login' && (
+        <Navbar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          currentUser={currentUser}
+          currentRole={currentRole}
+          selectedMonth={selectedMonth}
+          setSelectedMonth={setSelectedMonth}
+          selectedYear={selectedYear}
+          setSelectedYear={setSelectedYear}
+          onLogout={handleLogout}
+          teacherCount={teachers.length}
+          themeConfig={themeConfig}
+          onOpenThemeModal={() => setIsThemeModalOpen(true)}
+          onToggleDarkMode={handleToggleDarkMode}
+        />
+      )}
 
       {/* Main Page View Router */}
       <main className="flex-1">
