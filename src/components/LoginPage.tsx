@@ -100,15 +100,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       return { teacher: ADMIN_TEACHER, index: 0 };
     }
 
+    if (!Array.isArray(teachers)) return null;
+
     for (let i = 0; i < teachers.length; i++) {
       const t = teachers[i];
+      if (!t) continue;
       const tFormattedCode = formatTeacherId(t.emulationCode || t.id || getTeacherEmulationCode(t, i));
 
       if (
         tFormattedCode === formattedInput ||
-        t.email.toLowerCase() === clean ||
-        t.fullName.toLowerCase() === clean ||
-        t.id.toLowerCase() === clean
+        (t.email && t.email.toLowerCase() === clean) ||
+        (t.fullName && t.fullName.toLowerCase() === clean) ||
+        (t.id && t.id.toLowerCase() === clean)
       ) {
         return { teacher: t, index: i };
       }
@@ -288,12 +291,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       return;
     }
 
+    const code = (found.emulationCode || getTeacherEmulationCode(found)).toLowerCase();
+
     try {
-      const customPasswords = JSON.parse(localStorage.getItem('nuocoa_user_passwords') || '{}');
-      const code = (found.emulationCode || getTeacherEmulationCode(found)).toLowerCase();
-      customPasswords[code] = cleanNew;
-      customPasswords[found.email.toLowerCase()] = cleanNew;
-      localStorage.setItem('nuocoa_user_passwords', JSON.stringify(customPasswords));
+      try {
+        const customPasswords = JSON.parse(localStorage.getItem('nuocoa_user_passwords') || '{}');
+        customPasswords[code] = cleanNew;
+        customPasswords[found.email.toLowerCase()] = cleanNew;
+        localStorage.setItem('nuocoa_user_passwords', JSON.stringify(customPasswords));
+      } catch (e) {
+        console.warn('Cannot save password to localStorage:', e);
+      }
 
       // CRITICAL: Notify Admin trungnoitru83@gmail.com
       notifyCredentialChange({
@@ -424,7 +432,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     };
 
     teachers.push(newTeacherObj);
-    localStorage.setItem('nuocoa_teachers', JSON.stringify(teachers));
+    try {
+      localStorage.setItem('nuocoa_teachers', JSON.stringify(teachers));
+    } catch (e) {
+      console.warn('Cannot save teachers to localStorage:', e);
+    }
 
     notifyCredentialChange({
       targetTeacherName: newFullName.trim(),
@@ -443,15 +455,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
   // Filtered teachers for hidden modal
   const filteredTeachers = useMemo(() => {
+    if (!Array.isArray(teachers)) return [];
     if (!searchFilter.trim()) return teachers;
     const q = searchFilter.toLowerCase();
     return teachers.filter((t, idx) => {
-      const code = (t.emulationCode || getTeacherEmulationCode(t, idx)).toLowerCase();
+      if (!t) return false;
+      const code = (t.emulationCode || getTeacherEmulationCode(t, idx) || '').toLowerCase();
+      const name = (t.fullName || '').toLowerCase();
+      const email = (t.email || '').toLowerCase();
+      const subject = (t.subject || '').toLowerCase();
       return (
         code.includes(q) ||
-        t.fullName.toLowerCase().includes(q) ||
-        t.email.toLowerCase().includes(q) ||
-        t.subject.toLowerCase().includes(q)
+        name.includes(q) ||
+        email.includes(q) ||
+        subject.includes(q)
       );
     });
   }, [teachers, searchFilter]);
@@ -459,28 +476,32 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6">
 
-      {/* Header Banner (Ẩn hoàn toàn theo yêu cầu người dùng: 'ẩn logo này luôn') */}
+      {/* Header Banner Giao diện đăng nhập (Ẩn hoàn toàn theo yêu cầu người dùng) */}
       <div className="hidden" aria-hidden="true">
-        <div className="relative z-10 pr-0 sm:pr-44">
+        <div className="relative z-10 pr-0 sm:pr-48">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-xs font-black mb-2.5 backdrop-blur-sm">
+            <Lock className="w-3.5 h-3.5" />
+            <span>CỔNG ĐĂNG NHẬP THI ĐUA GIÁO VIÊN</span>
+          </div>
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
             Phần Mềm Chấm Thi Đua Hàng Tháng
           </h1>
-          <p className="text-xs sm:text-sm text-white/90 max-w-xl mt-1 font-medium">
+          <p className="text-xs sm:text-sm text-white/95 max-w-xl mt-1.5 font-medium leading-relaxed">
             Đăng nhập bằng <strong>Mã Thi Đua</strong>, Email cán bộ hoặc tài khoản được phân quyền.
           </p>
         </div>
       </div>
 
-      {/* Nút Xem danh sách và thêm mới */}
+      {/* Nút Xem danh sách mã thi đua và thêm mới */}
       <div className="max-w-xl mx-auto flex justify-end mb-3">
         <button
           type="button"
           onClick={handleOpen36CodesModal}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700 font-bold text-xs rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 transition shrink-0 cursor-pointer active:scale-95 hover:shadow"
+          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700 font-bold text-xs rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 transition shrink-0 cursor-pointer active:scale-95"
           title="Danh mục mã thi đua - Xem danh sách & thêm mới"
         >
           <ListOrdered className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-          <span>Xem danh sách &amp; thêm mới</span>
+          <span>Danh mục mã &amp; Thêm mới</span>
         </button>
       </div>
 

@@ -1,5 +1,5 @@
 import { Form03Evaluation, Form01Data, Form01Task, Teacher } from '../types';
-import { formatTeacherId, buildMaChamDiem, formatKyDanhGia, deduplicateTeachers } from '../utils/formatTeacherId';
+import { formatTeacherId, buildMaChamDiem, formatKyDanhGia, deduplicateTeachers, buildEvaluationId } from '../utils/formatTeacherId';
 import { createDefaultForm01, createDefaultEvaluation } from '../data/mockTeachers';
 
 export const GOOGLE_APPS_SCRIPT_LIBRARY_URL =
@@ -127,13 +127,38 @@ export interface CombinedGoogleSheetPayload {
   trangThai: string;
   status: string;
 
+  // Chi tiết từng tiêu chí theo Phần II của yêu cầu
+  evaluationId?: string;
+  evaluation_id?: string;
+  chi_tiet_tieu_chi?: Array<{
+    ma_tieu_chi: string;
+    ten_tieu_chi: string;
+    noi_dung: string;
+    phan: string;
+    diem_toi_da: number;
+    diem_gv_tu_cham: number;
+    diem_to_truong: number;
+    diem_ht_duyet: number;
+    minh_chung: string;
+    danh_sach_tep_minh_chung: string[];
+    nhan_xet: string;
+    trang_thai: string;
+  }>;
+  nhan_xet_gv?: string;
+  nhan_xet_tt?: string;
+  nhan_xet_ht?: string;
+  tong_diem_tu_cham?: number;
+  tong_diem_to_truong?: number;
+  tong_diem_ht_duyet?: number;
+  is_locked?: boolean;
+
   // Timestamp
   ngay_gui: string;
   ngayGui: string;
 }
 
 /**
- * Helper to execute POST to Google Apps Script with CORS & no-cors fallback
+ * Helper to execute POST to Google Apps Script with verified proxy first and fallback
  */
 async function postToGoogleAppsScript(apiUrl: string, payload: any): Promise<GoogleSheetSyncResult> {
   console.log(`==================== 📤 [GoogleSheet REQUEST POST] ====================`);
@@ -142,35 +167,103 @@ async function postToGoogleAppsScript(apiUrl: string, payload: any): Promise<Goo
   console.log(`📅 ky_danh_gia:`, payload.ky_danh_gia || payload.kyDanhGia);
   console.log(`🏷️ ma_thi_dua:`, payload.ma_thi_dua || payload.maThiDua);
   console.log(`📋 Số nhiệm vụ Mẫu 01:`, (payload.danh_sach_cong_viec || []).length);
+  console.log(`📊 Số tiêu chí chi tiết Mẫu 02/03:`, (payload.chi_tiet_tieu_chi || []).length);
   console.log(`🏆 Tổng điểm Mẫu 02/03:`, payload.tong_diem, `(${payload.xep_loai})`);
   console.log(`======================================================================`);
 
+  // 1. Prioritize Server-side proxy (/api/sync-sheet) to bypass CORS and get verified HTTP 200 JSON
   try {
-    await fetch(apiUrl, {
+    const proxyRes = await fetch('/api/sync-sheet', {
       method: 'POST',
-      mode: 'no-cors',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
 
-    console.log(`✅ [GoogleSheet POST no-cors] Thành công cho teacherId=${payload.ma_thi_dua}, kyDanhGia=${payload.ky_danh_gia}.`);
-    return {
-      success: true,
-      message: `Đã lưu và đồng bộ thành công cả Mẫu 01 & Mẫu 02/03 (${payload.ky_danh_gia}) lên Google Sheet!`,
-      maChamDiem: payload.ma_ban_ghi || payload.maChamDiem,
-      scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL
-    };
-  } catch (err: any) {
-    console.warn(`❌ [GoogleSheet POST Exception]:`, err);
-    return {
-      success: false,
-      message: err?.message || 'Lỗi kết nối tới Google Sheet API Web App',
-      maChamDiem: payload.ma_ban_ghi || payload.maChamDiem,
-      scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL
-    };
+    if (proxyRes.ok) {
+      const data = await proxyRes.json();
+      if (data.success || data.synced) {
+        return {
+          success: true,
+          message: data.message || `Đã đồng bộ thành công cả Mẫu 01 & Mẫu 02/03 (${payload.ky_danh_gia}) lên Google Sheet!`,
+          maChamDiem: data.evaluationId || payload.ma_ban_ghi || payload.evaluationId,
+          data,
+          scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL
+        };
+      } else {
+        return {
+          success: false,
+          message: data.message || 'Google Apps Script trả về lỗi xác thực dữ liệu',
+          maChamDiem: payload.ma_ban_ghi,
+          data,
+          scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL
+        };
+      }
+    }
+  } catch (proxyErr) {
+    console.warn(`[GoogleSheet] /api/sync-sheet proxy unavailable, attempting direct fetch:`, proxyErr);
   }
+
+  // 2. Direct verified fetch to Google Apps Script Web App
+  try {
+    const directRes = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+
+    if (directRes.ok) {
+      try {
+        const json = await directRes.json();
+        if (json.success !== false && json.status !== 'error') {
+          return {
+            success: true,
+            message: json.message || `Đã lưu và đồng bộ thành công (${payload.ky_danh_gia}) lên Google Sheet!`,
+            maChamDiem: json.maChamDiem || payload.ma_ban_ghi,
+            data: json,
+            scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL
+          };
+        }
+      } catch {
+        return {
+          success: true,
+          message: `Đã gửi dữ liệu thành công (${payload.ky_danh_gia}) lên Google Sheet!`,
+          maChamDiem: payload.ma_ban_ghi,
+          scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL
+        };
+      }
+    }
+  } catch (directErr: any) {
+    console.warn(`[GoogleSheet] Direct fetch CORS limit, attempting fallback transmission:`, directErr);
+    try {
+      await fetch(apiUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+
+      return {
+        success: true,
+        message: `Đã truyền dữ liệu Mẫu 01 & Mẫu 02/03 (${payload.ky_danh_gia}) tới Google Apps Script (Firebase đã lưu an toàn tuyệt đối).`,
+        maChamDiem: payload.ma_ban_ghi,
+        scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL
+      };
+    } catch (fallbackErr: any) {
+      return {
+        success: false,
+        message: fallbackErr?.message || 'Không thể kết nối đến Google Sheet API Web App',
+        maChamDiem: payload.ma_ban_ghi,
+        scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL
+      };
+    }
+  }
+
+  return {
+    success: false,
+    message: 'Không nhận được phản hồi xác nhận từ Google Apps Script',
+    maChamDiem: payload.ma_ban_ghi,
+    scriptLibraryUrl: GOOGLE_APPS_SCRIPT_LIBRARY_URL
+  };
 }
 
 /**
@@ -358,6 +451,31 @@ export function buildCombinedGoogleSheetPayload(
     trang_thai: trangThai,
     trangThai,
     status: activeEval.status || 'approved',
+
+    // Cấu trúc chi tiết Phần II & Phần III
+    evaluationId: activeEval.evaluationId || buildEvaluationId(teacherIdClean, year, month),
+    evaluation_id: activeEval.evaluationId || buildEvaluationId(teacherIdClean, year, month),
+    chi_tiet_tieu_chi: (activeEval.criteriaScores || Object.values(activeEval.scores || {})).map((c: any) => ({
+      ma_tieu_chi: c.criterionId,
+      ten_tieu_chi: c.criterionTitle || c.criterionId,
+      noi_dung: c.criterionDescription || '',
+      phan: c.part || 'A',
+      diem_toi_da: typeof c.maxPoints === 'number' ? c.maxPoints : 0,
+      diem_gv_tu_cham: typeof c.selfScore === 'number' ? c.selfScore : 0,
+      diem_to_truong: typeof c.leaderScore === 'number' ? c.leaderScore : (c.selfScore ?? 0),
+      diem_ht_duyet: typeof c.principalScore === 'number' ? c.principalScore : (c.leaderScore ?? c.selfScore ?? 0),
+      minh_chung: c.evidenceText || (Array.isArray(c.evidenceFiles) && c.evidenceFiles.length > 0 ? c.evidenceFiles.join(', ') : ''),
+      danh_sach_tep_minh_chung: Array.isArray(c.evidenceFiles) ? c.evidenceFiles : [],
+      nhan_xet: c.note || '',
+      trang_thai: c.status || 'valid'
+    })),
+    nhan_xet_gv: activeEval.teacherComment || '',
+    nhan_xet_tt: activeEval.leaderComment || '',
+    nhan_xet_ht: activeEval.principalComment || yKien,
+    tong_diem_tu_cham: activeEval.grandTotal_Teacher || 0,
+    tong_diem_to_truong: activeEval.grandTotal_Leader || activeEval.grandTotal_Teacher || 0,
+    tong_diem_ht_duyet: tongDiem,
+    is_locked: Boolean(activeEval.isLocked),
 
     ngay_gui: nowIso,
     ngayGui: nowIso

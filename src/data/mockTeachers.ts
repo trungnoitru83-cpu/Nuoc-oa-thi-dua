@@ -1,6 +1,6 @@
 import { Teacher, Form01Data, Form03Evaluation } from '../types';
 import { getClassification, getCriteriaForTeacher } from './form03Criteria';
-import { formatTeacherId } from '../utils/formatTeacherId';
+import { formatTeacherId, buildEvaluationId } from '../utils/formatTeacherId';
 
 export const SCHOOL_NAME = 'Trường PTDTNT THCS và THPT Nước Oa';
 
@@ -216,9 +216,17 @@ export function createDefaultEvaluation(teacherId: string, month: number, year: 
 
     scores[c.id] = {
       criteriaId: c.id,
+      code: c.code,
+      title: c.title,
+      description: c.description || c.title,
+      maxPoints: c.maxPoints,
       teacherScore: tScore,
+      leaderScore: pScore,
       principalScore: pScore,
-      note: ''
+      evidenceText: '',
+      evidenceFiles: [],
+      note: '',
+      status: 'approved'
     };
 
     if (c.section === 'A') {
@@ -245,26 +253,40 @@ export function createDefaultEvaluation(teacherId: string, month: number, year: 
   const grandTotal_Principal = Math.min(100, Math.max(0, Math.round((cappedA_Principal + cappedB_Principal + bonus_Principal - deduction_Principal) * 100) / 100));
 
   const padM = month < 10 ? `0${month}` : `${month}`;
+  const evalId = buildEvaluationId(teacher?.emulationCode || teacherId, year, month);
 
   return {
-    id: `eval_${teacherId}_m${month}`,
+    id: evalId,
+    evaluationId: evalId,
     teacherId,
     month,
     year,
     scores,
     totalPartA_Teacher: cappedA_Teacher,
+    totalPartA_Leader: cappedA_Principal,
     totalPartA_Principal: cappedA_Principal,
     totalPartB_Teacher: cappedB_Teacher,
+    totalPartB_Leader: cappedB_Principal,
     totalPartB_Principal: cappedB_Principal,
     totalBonus_Teacher: bonus_Teacher,
+    totalBonus_Leader: bonus_Principal,
     totalBonus_Principal: bonus_Principal,
     totalDeduction_Teacher: deduction_Teacher,
+    totalDeduction_Leader: deduction_Principal,
     totalDeduction_Principal: deduction_Principal,
     grandTotal_Teacher,
+    grandTotal_Leader: grandTotal_Principal,
     grandTotal_Principal,
     teacherClassification: getClassification(grandTotal_Teacher),
+    leaderClassification: getClassification(grandTotal_Principal),
     principalClassification: getClassification(grandTotal_Principal),
+    teacherComment: '',
+    leaderComment: '',
+    principalComment: '',
     status: idx % 4 === 0 ? 'approved' : 'submitted',
+    isLocked: false,
+    syncedToGoogleSheet: false,
+    version: 1,
     teacherSignatureDate: `28/${padM}/${year}`,
     principalSignatureDate: `30/${padM}/${year}`,
     updatedAt: new Date().toISOString()

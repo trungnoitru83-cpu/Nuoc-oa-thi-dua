@@ -4,17 +4,30 @@ import {
   setDoc, 
   onSnapshot, 
   getDocs,
-  query
+  query,
+  getDoc
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
-import { Teacher, Form01Data, Form03Evaluation, EntryStatusData } from '../types';
-import { formatTeacherId } from '../utils/formatTeacherId';
+import { 
+  Teacher, 
+  Role,
+  Form01Data, 
+  Form03Evaluation, 
+  EntryStatusData,
+  EvaluationAuditLog,
+  SystemBackup,
+  SystemSetting
+} from '../types';
+import { formatTeacherId, buildEvaluationId } from '../utils/formatTeacherId';
 
-// Collection references
+// Collection references matching Section III & VI
 const TEACHERS_COL = 'teachers';
 const FORM01_COL = 'form01';
 const EVALUATIONS_COL = 'evaluations';
 const ENTRY_STATUS_COL = 'entry_status';
+const EVALUATION_HISTORY_COL = 'evaluation_history';
+const SYSTEM_BACKUPS_COL = 'system_backups';
+const SYSTEM_SETTINGS_COL = 'system_settings';
 
 export enum OperationType {
   CREATE = 'create',
@@ -208,12 +221,70 @@ export async function saveForm01ToFirestore(docKey: string, data: Form01Data) {
 }
 
 /**
- * Save single Evaluation entry
+ * Save single Evaluation entry with full criteria breakdown and audit history logging
  */
-export async function saveEvaluationToFirestore(docKey: string, data: Form03Evaluation) {
+export async function saveEvaluationToFirestore(
+  docKey: string, 
+  data: Form03Evaluation,
+  auditInfo?: {
+    actorName?: string;
+    actorRole?: Role;
+    actorEmail?: string;
+    reason?: string;
+    actionType?: 'create' | 'self_score' | 'leader_review' | 'approve' | 'reject' | 'edit_score' | 'lock' | 'unlock';
+    teacherName?: string;
+    oldScore?: number;
+    oldStatus?: string;
+  }
+) {
   try {
-    const cleanData = sanitizeForFirestore({ ...data, docKey });
+    const evalId = data.evaluationId || docKey;
+    const cleanData = sanitizeForFirestore({ 
+      ...data, 
+      docKey,
+      evaluationId: evalId,
+      version: (data.version || 1) + 1,
+      updatedAt: data.updatedAt || new Date().toISOString()
+    });
+
+    // 1. Save main document to evaluations collection
     await setDoc(doc(db, EVALUATIONS_COL, docKey), cleanData, { merge: true });
+
+    // 2. Also save criteriaScores subcollection for granular query capability (Section III)
+    if (data.scores && typeof data.scores === 'object') {
+      const criteriaEntries = Object.entries(data.scores);
+      const subPromises = criteriaEntries.map(([critId, cScore]) => {
+        const subDoc = doc(db, EVALUATIONS_COL, docKey, 'criteriaScores', critId);
+        return setDoc(subDoc, sanitizeForFirestore({ ...cScore, criteriaId: critId }), { merge: true });
+      });
+      await Promise.allSettled(subPromises);
+    }
+
+    // 3. Log audit record into evaluation_history (Section VI)
+    if (auditInfo) {
+      const historyId = `hist_${docKey}_${Date.now()}`;
+      const logEntry: EvaluationAuditLog = {
+        id: historyId,
+        evaluationId: evalId,
+        teacherId: data.teacherId,
+        teacherName: auditInfo.teacherName || data.teacherId,
+        month: data.month,
+        year: data.year,
+        timestamp: new Date().toISOString(),
+        actorName: auditInfo.actorName || 'Hệ thống',
+        actorRole: (auditInfo.actorRole as any) || 'teacher',
+        actorEmail: auditInfo.actorEmail || auth.currentUser?.email || undefined,
+        actionType: auditInfo.actionType || (data.status === 'approved' ? 'approve' : 'self_score'),
+        oldGrandTotal: auditInfo.oldScore,
+        newGrandTotal: data.grandTotal_Principal || data.grandTotal_Teacher,
+        oldStatus: auditInfo.oldStatus,
+        newStatus: data.status,
+        reason: auditInfo.reason || (data.status === 'approved' ? 'Hiệu trưởng phê duyệt điểm' : 'Giáo viên cập nhật tự chấm'),
+        snapshotSummary: `Tổng điểm: GV ${data.grandTotal_Teacher}đ | HT ${data.grandTotal_Principal}đ (${data.principalClassification || data.teacherClassification})`
+      };
+      await setDoc(doc(db, EVALUATION_HISTORY_COL, historyId), sanitizeForFirestore(logEntry));
+    }
+
     return { success: true };
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${EVALUATIONS_COL}/${docKey}`);
@@ -258,3 +329,96 @@ export async function saveEntryStatusToFirestore(docKey: string, data: EntryStat
     return { success: false, error };
   }
 }
+
+/**
+ * Listen to Audit History logs (Lịch sử chỉnh sửa điểm - Section VI)
+ */
+export function listenToEvaluationHistory(
+  onData: (logs: EvaluationAuditLog[]) => void,
+  filterTeacherId?: string
+) {
+  return onSnapshot(
+    query(collection(db, EVALUATION_HISTORY_COL)),
+    (snapshot) => {
+      const list: EvaluationAuditLog[] = [];
+      snapshot.forEach((docSnap) => {
+        const item = docSnap.data() as EvaluationAuditLog;
+        if (!filterTeacherId || item.teacherId === filterTeacherId) {
+          list.push(item);
+        }
+      });
+      list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      onData(list);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, EVALUATION_HISTORY_COL);
+    }
+  );
+}
+
+/**
+ * Save System Backup (Sao lưu hệ thống - Section VII)
+ */
+export async function saveSystemBackupToFirestore(backup: SystemBackup) {
+  try {
+    const cleanBackup = sanitizeForFirestore(backup);
+    await setDoc(doc(db, SYSTEM_BACKUPS_COL, backup.id), cleanBackup);
+    return { success: true };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `${SYSTEM_BACKUPS_COL}/${backup.id}`);
+    return { success: false, error };
+  }
+}
+
+/**
+ * Listen to System Backups list
+ */
+export function listenToSystemBackups(onData: (backups: SystemBackup[]) => void) {
+  return onSnapshot(
+    query(collection(db, SYSTEM_BACKUPS_COL)),
+    (snapshot) => {
+      const list: SystemBackup[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push(docSnap.data() as SystemBackup);
+      });
+      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      onData(list);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, SYSTEM_BACKUPS_COL);
+    }
+  );
+}
+
+/**
+ * Save system setting (e.g. locked periods)
+ */
+export async function saveSystemSettingToFirestore(settingKey: string, data: any) {
+  try {
+    await setDoc(doc(db, SYSTEM_SETTINGS_COL, settingKey), sanitizeForFirestore(data), { merge: true });
+    return { success: true };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `${SYSTEM_SETTINGS_COL}/${settingKey}`);
+    return { success: false, error };
+  }
+}
+
+/**
+ * Listen to system settings (e.g. period lock status)
+ */
+export function listenToSystemSettings(onData: (settings: Record<string, any>) => void) {
+  return onSnapshot(
+    query(collection(db, SYSTEM_SETTINGS_COL)),
+    (snapshot) => {
+      const map: Record<string, any> = {};
+      snapshot.forEach((docSnap) => {
+        map[docSnap.id] = docSnap.data();
+      });
+      onData(map);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, SYSTEM_SETTINGS_COL);
+    }
+  );
+}
+

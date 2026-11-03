@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Award, Search, Filter, Printer, Download, UserPlus, Eye, FileSpreadsheet, CheckCircle, AlertTriangle, ShieldCheck, HelpCircle, FileText, Check, RefreshCw, CloudCheck, ShieldAlert, Clock, XCircle, UserCheck, Bell, Sparkles } from 'lucide-react';
+import { Award, Search, Filter, Printer, Download, UserPlus, Eye, FileSpreadsheet, CheckCircle, AlertTriangle, ShieldCheck, HelpCircle, FileText, Check, RefreshCw, CloudCheck, ShieldAlert, Clock, XCircle, UserCheck, Bell, Sparkles, Archive, History } from 'lucide-react';
 import { Teacher, Form03Evaluation, Form01Data, ClassificationType, Role, EntryStatusData } from '../types';
 import { CLASSIFICATION_RULES, getClassificationLabel, getClassification, isLeaderTeacher } from '../data/form03Criteria';
 import { getTeacherEmulationCode } from '../data/mockTeachers';
@@ -23,6 +23,8 @@ interface SummaryTablePageProps {
   onSelectTeacherForView: (teacher: Teacher, tab: 'profile' | 'evaluation') => void;
   onOpenManageTeachersModal: (initialAddAdmin?: boolean) => void;
   onOpenPrintModal: (type: 'summary', teacherId?: string) => void;
+  onOpenBackupModal?: () => void;
+  onOpenHistoryModal?: () => void;
 }
 
 export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
@@ -37,7 +39,9 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
   onMarkEntryStatus,
   onSelectTeacherForView,
   onOpenManageTeachersModal,
-  onOpenPrintModal
+  onOpenPrintModal,
+  onOpenBackupModal,
+  onOpenHistoryModal
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState<string>('ALL');
@@ -51,6 +55,20 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
   const cleanTeachers = useMemo(() => {
     return deduplicateTeachers(teachers);
   }, [teachers]);
+
+  // Phân quyền phạm vi hiển thị: Quản trị/BGH xem toàn trường; Tổ trưởng chỉ xem tổ mình; Giáo viên chỉ xem mình
+  const scopedTeachers = useMemo(() => {
+    if (currentRole === 'admin' || currentRole === 'principal') {
+      return cleanTeachers;
+    }
+    if (currentRole === 'department_head' && currentUser?.department) {
+      return cleanTeachers.filter(t => t.department === currentUser.department);
+    }
+    if (currentRole === 'teacher' && currentUser) {
+      return cleanTeachers.filter(t => t.id === currentUser.id);
+    }
+    return cleanTeachers;
+  }, [cleanTeachers, currentRole, currentUser]);
 
   // Tính toán tiến độ cập nhật Mẫu 01, Mẫu 02, Mẫu 03 theo thời gian thực (Real-time)
   const progressStats = useMemo(() => {
@@ -115,8 +133,8 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
     }
   };
 
-  // Filter teachers list (đã lọc trùng 1 viên chức - 1 dòng duy nhất)
-  const filteredTeachers = cleanTeachers.filter((t) => {
+  // Filter teachers list theo phân quyền (đã lọc trùng 1 viên chức - 1 dòng duy nhất)
+  const filteredTeachers = scopedTeachers.filter((t) => {
     const matchesSearch = t.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (t.position && t.position.toLowerCase().includes(searchTerm.toLowerCase())) ||
                           t.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -144,14 +162,14 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
     return matchesSearch && matchesDept && matchesClass && matchesProgress;
   });
 
-  // Calculate statistics across all teachers (deduplicated)
+  // Calculate statistics across scoped teachers (theo phân quyền)
   let totalExcellent = 0; // >= 90
   let totalGood = 0;      // 80 - <90
   let totalPass = 0;      // 50 - <80
   let totalFail = 0;      // < 50
   let totalPointsSum = 0;
 
-  cleanTeachers.forEach((t) => {
+  scopedTeachers.forEach((t) => {
     const ev = getEval(t.id);
     const partA = ev ? Math.min(30, ev.totalPartA_Principal) : 30;
     const partB = ev ? Math.min(70, ev.totalPartB_Principal) : 60;
@@ -166,16 +184,16 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
     else totalFail++;
   });
 
-  const avgSchoolScore = cleanTeachers.length > 0 ? (totalPointsSum / cleanTeachers.length).toFixed(1) : '0';
+  const avgSchoolScore = scopedTeachers.length > 0 ? (totalPointsSum / scopedTeachers.length).toFixed(1) : '0';
 
-  // Export to CSV / Excel helper with GV/NV self-assessment score
+  // Export to CSV / Excel helper with GV/NV self-assessment score (scoped)
   const handleExportCSV = () => {
     let csvContent = '\uFEFF'; // UTF-8 BOM
     csvContent += `BẢNG TỔNG HỢP XẾP LOẠI THI ĐUA CÁN BỘ GIÁO VIÊN THÁNG ${selectedMonth}/${selectedYear}\n`;
     csvContent += `Trường PTDTNT THCS và THPT Nước Oa\n\n`;
     csvContent += `STT,Mã Thi Đua,Họ và tên cán bộ giáo viên,Chức vụ,Ngày sinh,Bộ môn,Tổ chuyên môn,Trường,Điểm GV/NV tự chấm,Điểm A (HT duyệt),Điểm B (HT duyệt),Điểm Cộng (+C),Điểm Trừ (-D),Tổng điểm Hiệu trưởng đánh giá,Xếp loại thi đua,Trạng thái\n`;
 
-    cleanTeachers.forEach((t, idx) => {
+    scopedTeachers.forEach((t, idx) => {
       const code = t.emulationCode || getTeacherEmulationCode(t, idx);
       const ev = getEval(t.id);
       const pos = t.position || t.subject;
@@ -206,15 +224,15 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
     document.body.removeChild(link);
   };
 
-  // Export summary table to Word .doc format with GV/NV self-assessment score
+  // Export summary table to Word .doc format with GV/NV self-assessment score (scoped)
   const handleExportWord = () => {
-    let html = `<div class="title">BẢNG TỔNG HỢP XẾP LOẠI THI ĐUA ${cleanTeachers.length} CÁN BỘ GIÁO VIÊN THÁNG ${selectedMonth}/${selectedYear}</div>`;
+    let html = `<div class="title">BẢNG TỔNG HỢP XẾP LOẠI THI ĐUA ${scopedTeachers.length} CÁN BỘ GIÁO VIÊN THÁNG ${selectedMonth}/${selectedYear}</div>`;
     html += `<div class="subtitle">Trường PTDTNT THCS và THPT Nước Oa</div>`;
     html += `<table><thead><tr>
       <th>STT</th><th>Họ và tên</th><th>Chức vụ</th><th>Bộ môn</th><th>Tổ chuyên môn</th><th>Điểm GV tự chấm</th><th>Điểm A</th><th>Điểm B</th><th>Điểm Cộng</th><th>Điểm Trừ</th><th>Tổng điểm HT</th><th>Xếp loại</th>
     </tr></thead><tbody>`;
 
-    cleanTeachers.forEach((t, idx) => {
+    scopedTeachers.forEach((t, idx) => {
       const ev = getEval(t.id);
       const pos = t.position || t.subject;
       const tPartA = ev ? Math.min(30, ev.totalPartA_Teacher ?? 30) : 30;
@@ -371,6 +389,28 @@ export const SummaryTablePage: React.FC<SummaryTablePageProps> = ({
             <Download className="w-4 h-4" />
             <span>Xuất Excel/CSV</span>
           </button>
+
+          {onOpenBackupModal && currentRole === 'admin' && (
+            <button
+              onClick={onOpenBackupModal}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-purple-700 hover:bg-purple-800 text-white font-black text-xs rounded-2xl transition shadow-sm cursor-pointer"
+              title="Sao lưu toàn bộ dữ liệu hoặc phục hồi từ tệp JSON"
+            >
+              <Archive className="w-4 h-4 text-purple-200" />
+              <span>Sao Lưu &amp; Phục Hồi</span>
+            </button>
+          )}
+
+          {onOpenHistoryModal && (currentRole === 'admin' || currentRole === 'principal') && (
+            <button
+              onClick={onOpenHistoryModal}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-black text-xs rounded-2xl transition shadow-sm cursor-pointer"
+              title="Xem nhật ký lịch sử chỉnh sửa điểm thi đua của từng cán bộ"
+            >
+              <History className="w-4 h-4 text-indigo-300" />
+              <span>Lịch Sử Chỉnh Sửa</span>
+            </button>
+          )}
 
           <button
             onClick={() => onOpenPrintModal('summary')}

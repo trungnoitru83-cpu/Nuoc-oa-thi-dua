@@ -88,3 +88,32 @@ export function deduplicateTeachers<T extends { id?: string; emulationCode?: str
   return Array.from(map.values());
 }
 
+/**
+ * Standardize Evaluation ID according to Section III: {teacherCode}_{year}_{monthPad}
+ * Example: TĐ0023_2026_01, TĐ16_2026_06
+ */
+export function buildEvaluationId(teacherIdOrCode: string, year: number | string, month: number | string): string {
+  const code = formatTeacherId(teacherIdOrCode);
+  const m = parseInt(String(month), 10) || 1;
+  const y = parseInt(String(year), 10) || 2026;
+  const monthPad = String(m).padStart(2, '0');
+  return `${code}_${y}_${monthPad}`;
+}
+
+/**
+ * Lookup evaluation data across new and legacy keys for 100% backward compatibility
+ */
+export function getEvaluationKeyCandidates(teacherId: string, year: number, month: number, emulationCode?: string): string[] {
+  const code = formatTeacherId(emulationCode || teacherId);
+  const monthPad = String(month).padStart(2, '0');
+  return [
+    `${code}_${year}_${monthPad}`,
+    `${teacherId}_${year}_${monthPad}`,
+    `${teacherId}_y${year}_m${month}`,
+    `${code}_y${year}_m${month}`,
+    `${teacherId}_y${year}_m${monthPad}`,
+    `${teacherId}_m${month}`
+  ];
+}
+
+

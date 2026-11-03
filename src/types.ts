@@ -95,36 +95,57 @@ export interface CriteriaItem {
 
 export interface CriteriaScore {
   criteriaId: string;
-  teacherScore: number; // Giáo viên tự tick
-  principalScore: number; // Hiệu trưởng tự tick / duyệt
-  note?: string;
+  code?: string; // Mã tiêu chí: e.g. A.I.1.a, B.I.1.a
+  title?: string; // Tên tiêu chí
+  description?: string; // Nội dung đánh giá
+  maxPoints?: number; // Điểm tối đa
+  teacherScore: number; // Điểm giáo viên tự chấm
+  leaderScore?: number; // Điểm tổ trưởng đề xuất
+  principalScore: number; // Điểm hiệu trưởng phê duyệt
+  evidenceText?: string; // Nội dung minh chứng
+  evidenceFiles?: string[]; // Danh sách tệp minh chứng
+  note?: string; // Ý kiến nhận xét
+  status?: 'draft' | 'submitted' | 'leader_reviewed' | 'approved' | 'rejected';
 }
 
 export interface Form03Evaluation {
-  id: string;
+  id: string; // Khóa định danh: e.g. "TĐ0023_2026_01" hoặc docKey tương thích
+  evaluationId?: string; // Mã đánh giá duy nhất
   teacherId: string;
   month: number; // 1 - 12
   year: number;
-  scores: Record<string, CriteriaScore>; // criteriaId -> CriteriaScore
+  scores: Record<string, CriteriaScore>; // criteriaId -> CriteriaScore đầy đủ
+  criteriaScores?: CriteriaScore[]; // Danh sách tiêu chí chi tiết dạng mảng
   
-  // Totals calculated
+  // Totals calculated - Giáo viên, Tổ trưởng đề xuất, Hiệu trưởng duyệt
   totalPartA_Teacher: number;
+  totalPartA_Leader?: number;
   totalPartA_Principal: number;
   
   totalPartB_Teacher: number;
+  totalPartB_Leader?: number;
   totalPartB_Principal: number;
   
   totalBonus_Teacher: number;
+  totalBonus_Leader?: number;
   totalBonus_Principal: number;
   
   totalDeduction_Teacher: number;
+  totalDeduction_Leader?: number;
   totalDeduction_Principal: number;
   
   grandTotal_Teacher: number;
+  grandTotal_Leader?: number;
   grandTotal_Principal: number;
   
   teacherClassification: ClassificationType;
+  leaderClassification?: ClassificationType;
   principalClassification: ClassificationType;
+
+  // Ý kiến nhận xét ba cấp
+  teacherComment?: string;
+  leaderComment?: string;
+  principalComment?: string;
   
   teacherSignatureDate?: string;
   principalSignatureDate?: string;
@@ -132,10 +153,77 @@ export interface Form03Evaluation {
   teacherSignatureImg?: string;
   principalSignatureImg?: string;
   
-  status: 'draft' | 'submitted' | 'approved' | 'rejected';
-  principalComment?: string;
+  status: 'draft' | 'submitted' | 'leader_reviewed' | 'approved' | 'rejected';
+  isLocked?: boolean; // Khóa kỳ đánh giá
+  lockedAt?: string;
+  lockedBy?: string;
+
+  // Trạng thái đồng bộ Google Sheets
+  syncedToGoogleSheet?: boolean;
+  lastSyncedAt?: string;
+  sheetSyncError?: string;
+
+  // Phiên bản dữ liệu và lịch sử
+  version?: number;
+  updatedBy?: string;
   isUpdated?: boolean; // Đánh dấu đã cập nhật theo thời gian thực
   updatedAt: string;
+}
+
+export interface EvaluationAuditLog {
+  id: string;
+  evaluationId: string;
+  teacherId: string;
+  teacherName: string;
+  month: number;
+  year: number;
+  timestamp: string;
+  actorName: string;
+  actorRole: Role;
+  actorEmail?: string;
+  actionType: 'create' | 'self_score' | 'leader_review' | 'approve' | 'reject' | 'edit_score' | 'lock' | 'unlock';
+  oldGrandTotal?: number;
+  newGrandTotal?: number;
+  oldStatus?: string;
+  newStatus?: string;
+  reason?: string;
+  modifiedFields?: string[];
+  snapshotSummary?: string;
+}
+
+export interface SystemBackup {
+  id: string;
+  backupId?: string;
+  createdAt: string;
+  createdBy: string;
+  scope?: 'all' | 'year' | 'month' | 'teacher';
+  backupType?: string;
+  year?: number;
+  month?: number;
+  teacherId?: string;
+  version?: string;
+  totalTeachers?: number;
+  totalEvaluations?: number;
+  totalForm01?: number;
+  totalAuditLogs?: number;
+  dataSummary?: any;
+  note?: string;
+  payload?: {
+    teachers: Teacher[];
+    evaluations: Record<string, Form03Evaluation>;
+    form01: Record<string, Form01Data>;
+    auditLogs?: EvaluationAuditLog[];
+    entryStatuses?: Record<string, EntryStatusData>;
+  };
+}
+
+export interface SystemSetting {
+  id: string;
+  lockedPeriods?: Record<string, boolean>; // key: "y2026_m11" -> true
+  defaultYear?: number;
+  backupAutoFrequency?: string;
+  updatedAt: string;
+  updatedBy: string;
 }
 
 export interface MonthlyEmulationSummary {
@@ -143,3 +231,4 @@ export interface MonthlyEmulationSummary {
   form01Submitted: boolean;
   evaluation?: Form03Evaluation;
 }
+
